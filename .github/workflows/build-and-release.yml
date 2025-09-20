@@ -1,0 +1,151 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal
+
+    - name: Publish MCP Server
+      run: |
+        dotnet publish src/Everything.Mcp/Everything.Mcp.csproj `
+          --configuration Release `
+          --output ./publish/mcp-server `
+          --self-contained true `
+          --runtime win-x64 `
+          -p:PublishSingleFile=true `
+          -p:IncludeNativeLibrariesForSelfExtract=true
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: everything-mcp-server
+        path: ./publish/mcp-server/
+
+    - name: Create package
+      if: startsWith(github.ref, 'refs/tags/v')
+      run: |
+        $version = "${{ github.ref_name }}"
+        $packageName = "everything-mcp-$version-win-x64"
+
+        # Create package directory
+        New-Item -ItemType Directory -Path "./packages/$packageName" -Force
+
+        # Copy binaries
+        Copy-Item -Path "./publish/mcp-server/*" -Destination "./packages/$packageName/" -Recurse
+
+        # Create README for package
+        @"
+        # Everything MCP Server $version
+
+        A Model Context Protocol (MCP) server that provides file search capabilities using Everything Search Engine.
+
+        ## Prerequisites
+
+        - Windows operating system
+        - Everything Search Engine (https://www.voidtools.com/) installed and running
+
+        ## Usage
+
+        Run the MCP server:
+        ``````
+        everything-mcp.exe
+        ``````
+
+        The server accepts JSON-RPC requests on stdin and returns responses on stdout.
+
+        ## Tools Available
+
+        - `search_files`: Search for files and folders
+          - `query`: Search query (supports Everything syntax)
+          - `includeMetadata`: Include file metadata (optional, default: false)
+          - `maxResults`: Maximum number of results (optional, default: 100)
+
+        ## Example
+
+        ``````json
+        {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/call",
+          "params": {
+            "name": "search_files",
+            "arguments": {
+              "query": "*.txt",
+              "maxResults": 10
+            }
+          }
+        }
+        ``````
+        "@ | Out-File -FilePath "./packages/$packageName/README.md" -Encoding UTF8
+
+        # Create zip package
+        Compress-Archive -Path "./packages/$packageName" -DestinationPath "./packages/$packageName.zip"
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./packages/*.zip
+        body: |
+          ## Everything MCP Server ${{ github.ref_name }}
+
+          A Model Context Protocol server that provides file search capabilities using Everything Search Engine.
+
+          ### Features
+          - ⚡ Lightning-fast file search using Everything IPC
+          - 🔍 Support for Everything search syntax (wildcards, operators, etc.)
+          - 📊 Optional metadata retrieval (file size, dates, attributes)
+          - 🚀 Dual-mode operation: fast basic search or detailed metadata search
+          - 🔌 Standard MCP JSON-RPC interface
+
+          ### Requirements
+          - Windows operating system
+          - Everything Search Engine installed and running
+
+          ### Installation
+          1. Download the `everything-mcp-${{ github.ref_name }}-win-x64.zip` file
+          2. Extract to desired location
+          3. Ensure Everything Search Engine is installed and running
+          4. Run `everything-mcp.exe`
+
+          ### Usage with Claude Desktop
+          Add to your Claude Desktop configuration:
+          ```json
+          {
+            "mcpServers": {
+              "everything": {
+                "command": "path/to/everything-mcp.exe"
+              }
+            }
+          }
+          ```
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

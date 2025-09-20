@@ -5,6 +5,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Title>Everything Test Console</Title>
     <Description>Console application for testing Everything integration</Description>
     <Copyright>Copyright © 2025</Copyright>

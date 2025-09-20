@@ -1,4 +1,5 @@
 using Everything.Interop;
+using Everything.Client;
 using System.Runtime.InteropServices;
 
 namespace Everything.TestConsole;
@@ -37,5 +38,29 @@ public static class SimpleTest
         Console.WriteLine($"EverythingIpcListW: {Marshal.SizeOf<EverythingIpcListW>()} bytes");
 
         Console.WriteLine("\nStructure layout verification complete.");
+
+        // Test with specific debugging
+        TestDirectQuery();
+    }
+
+    private static unsafe void TestDirectQuery()
+    {
+        Console.WriteLine("\nTesting direct query construction...");
+
+        var query = "*.txt";
+        var queryLength = query.Length;
+        var structSize = sizeof(EverythingIpcQueryW);
+        var totalSize = structSize - sizeof(char) + (queryLength * sizeof(char)) + sizeof(char);
+
+        Console.WriteLine($"Query: '{query}'");
+        Console.WriteLine($"Query length: {queryLength}");
+        Console.WriteLine($"Struct size: {structSize}");
+        Console.WriteLine($"Total size: {totalSize}");
+
+        var queryBytes = System.Text.Encoding.Unicode.GetBytes(query + '\0');
+        Console.WriteLine($"Query bytes length: {queryBytes.Length}");
+        Console.WriteLine($"Query bytes: {BitConverter.ToString(queryBytes)}");
+
+        Console.WriteLine("Query structure analysis complete.");
     }
 }

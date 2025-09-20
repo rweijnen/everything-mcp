@@ -53,6 +53,9 @@ public static class CopyDataMessages
     public const uint SET_RUN_COUNTW = 22;
     public const uint INC_RUN_COUNTA = 23;
     public const uint INC_RUN_COUNTW = 24;
+
+    // Custom reply message identifier (commonly used in examples)
+    public const uint COPYDATA_QUERYCOMPLETE = 0;
 }
 
 public enum TargetMachine : uint
@@ -149,6 +152,30 @@ public enum Query2RequestFlags : uint
     DateRun = 0x00000800,
     DateRecentlyChanged = 0x00001000,
     HighlightedName = 0x00002000,
+
     HighlightedPath = 0x00004000,
-    HighlightedFullPathAndName = 0x00008000
+    HighlightedFullPathAndName = 0x00008000,
+
+    // Convenience combinations
+    Basic = Name | Path,
+    All = Name | Path | FullPathAndName | Extension | Size | DateCreated | DateModified |
+          DateAccessed | Attributes | RunCount | DateRun | DateRecentlyChanged
+}
+
+public enum QueryType
+{
+    /// <summary>
+    /// Automatically choose QUERY1 or QUERY2 based on RequestFlags
+    /// </summary>
+    Auto,
+
+    /// <summary>
+    /// Use QUERY1 - basic name/path search (fastest)
+    /// </summary>
+    Query1,
+
+    /// <summary>
+    /// Use QUERY2 - extended search with metadata
+    /// </summary>
+    Query2
 }

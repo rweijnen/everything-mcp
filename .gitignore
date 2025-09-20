@@ -404,3 +404,6 @@ CLAUDE.md
 
 # Everything SDK - should be downloaded separately
 sdk/
+
+# Legacy test files
+legacy-tests/

@@ -192,6 +192,18 @@ public class EverythingClient : IEverythingClient
         }
     }
 
+    public Task<SearchResult[]> SearchBasicAsync(string query, SearchFlags flags = SearchFlags.None, CancellationToken cancellationToken = default)
+    {
+        var options = SearchOptions.Basic(query, flags);
+        return SearchAsync(options, cancellationToken);
+    }
+
+    public Task<SearchResult[]> SearchWithMetadataAsync(string query, Query2RequestFlags requestFlags = Query2RequestFlags.All, SearchFlags flags = SearchFlags.None, CancellationToken cancellationToken = default)
+    {
+        var options = SearchOptions.WithMetadata(query, requestFlags, flags);
+        return SearchAsync(options, cancellationToken);
+    }
+
     public Task<SearchResult[]> SearchFilesAsync(string query, CancellationToken cancellationToken = default)
     {
         var modifiedQuery = string.IsNullOrEmpty(query) ? "file:" : $"file: {query}";

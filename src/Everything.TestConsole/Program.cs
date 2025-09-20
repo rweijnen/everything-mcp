@@ -10,6 +10,23 @@ internal class Program
 {
     static async Task<int> Main(string[] args)
     {
+        // Check for verification mode
+        if (args.Length > 0 && args[0] == "--verify")
+        {
+            return await VerificationProgram.RunVerificationAsync(args.Skip(1).ToArray());
+        }
+
+        // Check for metadata verification mode
+        if (args.Length > 0 && args[0] == "--metadata")
+        {
+            return await MetadataVerificationProgram.RunMetadataVerificationAsync(args.Skip(1).ToArray());
+        }
+
+        // Check for dual-mode verification
+        if (args.Length > 0 && args[0] == "--dual")
+        {
+            return await DualModeVerificationProgram.RunDualModeVerificationAsync(args.Skip(1).ToArray());
+        }
         try
         {
             var host = CreateHostBuilder(args).Build();

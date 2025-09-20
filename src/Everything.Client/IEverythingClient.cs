@@ -17,6 +17,10 @@ public interface IEverythingClient : IDisposable
     Task<SearchResult[]> SearchAsync(string query, SearchFlags flags, SortType sort, uint maxResults, CancellationToken cancellationToken = default);
     Task<SearchResult[]> SearchAsync(SearchOptions options, CancellationToken cancellationToken = default);
 
+    // Efficiency-focused methods
+    Task<SearchResult[]> SearchBasicAsync(string query, SearchFlags flags = SearchFlags.None, CancellationToken cancellationToken = default);
+    Task<SearchResult[]> SearchWithMetadataAsync(string query, Query2RequestFlags requestFlags = Query2RequestFlags.All, SearchFlags flags = SearchFlags.None, CancellationToken cancellationToken = default);
+
     Task<SearchResult[]> SearchFilesAsync(string query, CancellationToken cancellationToken = default);
     Task<SearchResult[]> SearchFoldersAsync(string query, CancellationToken cancellationToken = default);
     Task<SearchResult[]> SearchByExtensionAsync(string extension, CancellationToken cancellationToken = default);

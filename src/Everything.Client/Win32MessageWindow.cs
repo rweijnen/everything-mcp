@@ -8,6 +8,7 @@ internal unsafe class Win32MessageWindow : IDisposable
 {
     private const string WindowClassName = "EverythingClient_MessageWindow";
     private readonly ConcurrentDictionary<uint, TaskCompletionSource<SearchResult[]>> _pendingQueries = new();
+    private readonly ConcurrentDictionary<uint, bool> _pendingQueryTypes = new(); // Track if query is QUERY2
     private uint _nextQueryId = 1;
     private IntPtr _hwnd = IntPtr.Zero;
     private bool _disposed = false;
@@ -36,7 +37,7 @@ internal unsafe class Win32MessageWindow : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Msg
+    public struct Msg
     {
         public IntPtr hwnd;
         public uint message;
@@ -47,7 +48,7 @@ internal unsafe class Win32MessageWindow : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Point
+    public struct Point
     {
         public int x;
         public int y;
@@ -63,21 +64,89 @@ internal unsafe class Win32MessageWindow : IDisposable
         IntPtr hInstance, IntPtr lpParam);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyWindow(IntPtr hWnd);
+    public static extern bool DestroyWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr DefWindowProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("kernel32.dll")]
-    private static extern IntPtr GetModuleHandle(string lpModuleName);
+    public static extern IntPtr GetModuleHandle(string? lpModuleName);
 
     [DllImport("user32.dll")]
-    private static extern bool UnregisterClass(string lpClassName, IntPtr hInstance);
+    public static extern bool UnregisterClass(string lpClassName, IntPtr hInstance);
+
+    [DllImport("user32.dll")]
+    public static extern bool PeekMessage(out Msg lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+    [DllImport("user32.dll")]
+    public static extern bool TranslateMessage(ref Msg lpMsg);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr DispatchMessage(ref Msg lpMsg);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool ChangeWindowMessageFilter(uint message, uint dwFlag);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool ChangeWindowMessageFilterEx(IntPtr hWnd, uint message, uint action, IntPtr pChangeFilterStruct);
+
+    // Message filter actions
+    private const uint MSGFLT_RESET = 0;
+    private const uint MSGFLT_ALLOW = 1;
+    private const uint MSGFLT_DISALLOW = 2;
+
 
     public Win32MessageWindow()
     {
         _wndProcDelegate = WndProc;
         CreateMessageWindow();
+
+        // Allow WM_COPYDATA messages from lower privilege processes (e.g., non-elevated Everything to elevated MCP)
+        SetupMessageFilter();
+
+        // Test: Send ourselves a WM_COPYDATA to verify our WndProc works
+        // TestSelfMessage();
+    }
+
+    private void TestSelfMessage()
+    {
+        Console.WriteLine("DEBUG: Testing self WM_COPYDATA message...");
+
+        var testData = "Hello from self!";
+        var testBytes = System.Text.Encoding.UTF8.GetBytes(testData);
+
+        var memory = Marshal.AllocHGlobal(testBytes.Length);
+        try
+        {
+            Marshal.Copy(testBytes, 0, memory, testBytes.Length);
+
+            var copyData = new CopyDataStruct
+            {
+                dwData = (IntPtr)999, // Test value
+                cbData = (uint)testBytes.Length,
+                lpData = memory
+            };
+
+            var copyDataPtr = Marshal.AllocHGlobal(Marshal.SizeOf<CopyDataStruct>());
+            try
+            {
+                Marshal.StructureToPtr(copyData, copyDataPtr, false);
+
+                var result = SendMessage(_hwnd, 0x004A, _hwnd, copyDataPtr); // WM_COPYDATA = 0x004A
+                Console.WriteLine($"DEBUG: Self-message SendMessage result: {result}");
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(copyDataPtr);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(memory);
+        }
     }
 
     public IntPtr Handle => _hwnd;
@@ -114,6 +183,26 @@ internal unsafe class Win32MessageWindow : IDisposable
             throw new InvalidOperationException($"Failed to create message window: {Marshal.GetLastWin32Error()}");
     }
 
+    private void SetupMessageFilter()
+    {
+        try
+        {
+            // Allow WM_COPYDATA messages from lower privilege processes
+            // This is needed when the MCP server runs elevated but Everything runs non-elevated
+            bool result = ChangeWindowMessageFilter(Constants.WM_COPYDATA, MSGFLT_ALLOW);
+
+            if (!result)
+            {
+                // Try the newer API as fallback
+                result = ChangeWindowMessageFilterEx(_hwnd, Constants.WM_COPYDATA, MSGFLT_ALLOW, IntPtr.Zero);
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore message filter setup errors - not critical for basic operation
+        }
+    }
+
     public Task<SearchResult[]> QueryAsync(SearchOptions options, int timeoutMs, CancellationToken cancellationToken)
     {
         if (_disposed)
@@ -123,6 +212,7 @@ internal unsafe class Win32MessageWindow : IDisposable
         var tcs = new TaskCompletionSource<SearchResult[]>();
 
         _pendingQueries[queryId] = tcs;
+        _pendingQueryTypes[queryId] = options.RequiresQuery2;
 
         try
         {
@@ -135,17 +225,37 @@ internal unsafe class Win32MessageWindow : IDisposable
             combinedCts.Token.Register(() =>
             {
                 _pendingQueries.TryRemove(queryId, out _);
+                _pendingQueryTypes.TryRemove(queryId, out _);
                 if (timeoutCts.Token.IsCancellationRequested)
                     tcs.TrySetException(EverythingIpcException.TimeoutError("Search"));
                 else
                     tcs.TrySetCanceled(cancellationToken);
             });
 
+            // Pump messages on current thread while waiting for response
+            var startTime = Environment.TickCount;
+            while (!tcs.Task.IsCompleted && !combinedCts.Token.IsCancellationRequested)
+            {
+                if (PeekMessage(out var msg, _hwnd, 0, 0, 1)) // PM_REMOVE = 1, check our specific window
+                {
+                    TranslateMessage(ref msg);
+                    DispatchMessage(ref msg);
+                }
+                Thread.Sleep(1);
+
+                // Safety timeout
+                if (Environment.TickCount - startTime > timeoutMs)
+                {
+                    break;
+                }
+            }
+
             return tcs.Task;
         }
         catch
         {
             _pendingQueries.TryRemove(queryId, out _);
+            _pendingQueryTypes.TryRemove(queryId, out _);
             throw;
         }
     }
@@ -157,25 +267,30 @@ internal unsafe class Win32MessageWindow : IDisposable
             try
             {
                 var copyData = Marshal.PtrToStructure<CopyDataStruct>(lParam);
-                var queryId = (uint)copyData.dwData;
 
-                if (_pendingQueries.TryRemove(queryId, out var tcs))
+                if (copyData.dwData == CopyDataMessages.COPYDATA_QUERYCOMPLETE)
                 {
-                    try
+                    var firstQuery = _pendingQueries.FirstOrDefault();
+                    if (firstQuery.Key != 0 && _pendingQueries.TryRemove(firstQuery.Key, out var tcs))
                     {
-                        using var ipc = new EverythingIpc();
-                        var results = ipc.ParseResults(copyData.lpData, copyData.cbData, unicode: true);
-                        tcs.SetResult(results);
-                    }
-                    catch (Exception ex)
-                    {
-                        tcs.SetException(ex);
+                        var isQuery2 = _pendingQueryTypes.TryRemove(firstQuery.Key, out var queryType) && queryType;
+
+                        try
+                        {
+                            using var ipc = new EverythingIpc();
+                            var results = ipc.ParseResults(copyData.lpData, copyData.cbData, unicode: true, isQuery2: isQuery2);
+                            tcs.SetResult(results);
+                        }
+                        catch (Exception ex)
+                        {
+                            tcs.SetException(ex);
+                        }
                     }
                 }
 
-                return (IntPtr)1;
+                return new IntPtr(1); // TRUE
             }
-            catch
+            catch (Exception)
             {
                 return IntPtr.Zero;
             }
@@ -202,6 +317,7 @@ internal unsafe class Win32MessageWindow : IDisposable
                 tcs.TrySetException(new ObjectDisposedException(nameof(Win32MessageWindow)));
             }
             _pendingQueries.Clear();
+            _pendingQueryTypes.Clear();
 
             _disposed = true;
         }
