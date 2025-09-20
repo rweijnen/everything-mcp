@@ -346,6 +346,7 @@ public class EverythingIpc : IDisposable
 
             var result = ParseQuery2Item(dataPtr, remainingSize, list.RequestFlags, (ItemFlags)item.Flags);
             results.Add(result);
+
         }
 
         return results.ToArray();
@@ -370,27 +371,33 @@ public class EverythingIpc : IDisposable
         if ((requestFlags & (uint)Query2RequestFlags.Name) != 0)
         {
             if (offset + sizeof(uint) > remainingSize) return CreateEmptyResult(flags);
+
             var nameLength = *(uint*)(dataPtr + offset);
             offset += sizeof(uint);
 
-            if (nameLength > 0 && nameLength < 32768 && offset + nameLength * sizeof(char) <= remainingSize)
+            if (nameLength > 0 && nameLength < 32768 && offset + (nameLength + 1) * sizeof(char) <= remainingSize)
             {
-                name = new string((char*)(dataPtr + offset), 0, (int)nameLength);
+                var namePtr = (char*)(dataPtr + offset);
+                name = new string(namePtr, 0, (int)nameLength);
             }
-            offset += (int)nameLength * sizeof(char);
+
+            offset += (int)(nameLength + 1) * sizeof(char);
         }
 
         if ((requestFlags & (uint)Query2RequestFlags.Path) != 0)
         {
             if (offset + sizeof(uint) > remainingSize) return CreateEmptyResult(flags);
+
             var pathLength = *(uint*)(dataPtr + offset);
             offset += sizeof(uint);
 
-            if (pathLength > 0 && pathLength < 32768 && offset + pathLength * sizeof(char) <= remainingSize)
+            if (pathLength > 0 && pathLength < 32768 && offset + (pathLength + 1) * sizeof(char) <= remainingSize)
             {
-                path = new string((char*)(dataPtr + offset), 0, (int)pathLength);
+                var pathPtr = (char*)(dataPtr + offset);
+                path = new string(pathPtr, 0, (int)pathLength);
             }
-            offset += (int)pathLength * sizeof(char);
+
+            offset += (int)(pathLength + 1) * sizeof(char);
         }
 
         if ((requestFlags & (uint)Query2RequestFlags.FullPathAndName) != 0)
@@ -475,6 +482,7 @@ public class EverythingIpc : IDisposable
         var resultFullPath = !string.IsNullOrEmpty(fullPath) ? fullPath :
                            (!string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(name)) ?
                            Path.Combine(path, name) : (name ?? string.Empty);
+
 
         return new SearchResult(
             Name: name,

@@ -27,6 +27,12 @@ internal class Program
         {
             return await DualModeVerificationProgram.RunDualModeVerificationAsync(args.Skip(1).ToArray());
         }
+
+        // Check for QUERY2 debug mode
+        if (args.Length > 0 && args[0] == "--debug-query2")
+        {
+            return await DebugQuery2Program.RunDebugAsync(args.Skip(1).ToArray());
+        }
         try
         {
             var host = CreateHostBuilder(args).Build();
