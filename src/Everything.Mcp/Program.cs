@@ -235,6 +235,116 @@ namespace Everything.Mcp
                         },
                         required = new[] { "name" }
                     }
+                },
+                new
+                {
+                    name = "find_source_files",
+                    description = "Find source code files by programming language or extension",
+                    inputSchema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            language = new
+                            {
+                                type = "string",
+                                description = "Programming language (e.g., 'csharp', 'javascript', 'python', 'java')"
+                            },
+                            extensions = new
+                            {
+                                type = "array",
+                                items = new { type = "string" },
+                                description = "Custom file extensions to search for (e.g., ['.cs', '.js', '.py'])"
+                            },
+                            directory = new
+                            {
+                                type = "string",
+                                description = "Directory to search within (optional)"
+                            },
+                            maxResults = new
+                            {
+                                type = "integer",
+                                description = "Maximum number of results to return",
+                                @default = 200,
+                                minimum = 1,
+                                maximum = 2000
+                            }
+                        }
+                    }
+                },
+                new
+                {
+                    name = "search_recent_files",
+                    description = "Find recently modified files within a time period",
+                    inputSchema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            hours = new
+                            {
+                                type = "integer",
+                                description = "Number of hours to look back (default: 24)",
+                                @default = 24,
+                                minimum = 1,
+                                maximum = 168
+                            },
+                            filePattern = new
+                            {
+                                type = "string",
+                                description = "File pattern to filter by (optional, e.g., '*.cs', '*.txt')"
+                            },
+                            directory = new
+                            {
+                                type = "string",
+                                description = "Directory to search within (optional)"
+                            },
+                            maxResults = new
+                            {
+                                type = "integer",
+                                description = "Maximum number of results to return",
+                                @default = 100,
+                                minimum = 1,
+                                maximum = 1000
+                            }
+                        }
+                    }
+                },
+                new
+                {
+                    name = "find_config_files",
+                    description = "Find configuration files (package.json, appsettings.json, etc.)",
+                    inputSchema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            configType = new
+                            {
+                                type = "string",
+                                description = "Type of config file ('npm', 'dotnet', 'git', 'vscode', 'all', or 'custom')",
+                                @default = "all"
+                            },
+                            customPattern = new
+                            {
+                                type = "string",
+                                description = "Custom pattern when configType is 'custom' (e.g., '*.config', '*.ini')"
+                            },
+                            directory = new
+                            {
+                                type = "string",
+                                description = "Directory to search within (optional)"
+                            },
+                            maxResults = new
+                            {
+                                type = "integer",
+                                description = "Maximum number of results to return",
+                                @default = 100,
+                                minimum = 1,
+                                maximum = 500
+                            }
+                        }
+                    }
                 }
             };
 
@@ -268,6 +378,9 @@ namespace Everything.Mcp
                 "search_files" => await HandleSearchFilesAsync(request.Id, arguments),
                 "search_in_project" => await HandleSearchInProjectAsync(request.Id, arguments),
                 "find_executable" => await HandleFindExecutableAsync(request.Id, arguments),
+                "find_source_files" => await HandleFindSourceFilesAsync(request.Id, arguments),
+                "search_recent_files" => await HandleSearchRecentFilesAsync(request.Id, arguments),
+                "find_config_files" => await HandleFindConfigFilesAsync(request.Id, arguments),
                 _ => new McpResponse
                 {
                     Id = request.Id,
@@ -692,6 +805,422 @@ namespace Everything.Mcp
         {
             var json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
             return json;
+        }
+
+        private async Task<McpResponse> HandleFindSourceFilesAsync(object? requestId, JsonElement arguments)
+        {
+            try
+            {
+                // Get language extensions mapping
+                var languageExtensions = new Dictionary<string, string[]>
+                {
+                    { "csharp", new[] { "*.cs", "*.csx", "*.csproj", "*.sln" } },
+                    { "javascript", new[] { "*.js", "*.jsx", "*.mjs", "*.ts", "*.tsx" } },
+                    { "python", new[] { "*.py", "*.pyw", "*.pyx", "*.pyi" } },
+                    { "java", new[] { "*.java", "*.class", "*.jar" } },
+                    { "cpp", new[] { "*.cpp", "*.c", "*.cc", "*.cxx", "*.h", "*.hpp", "*.hxx" } },
+                    { "php", new[] { "*.php", "*.php3", "*.php4", "*.php5", "*.phtml" } },
+                    { "ruby", new[] { "*.rb", "*.rbw", "*.gem" } },
+                    { "go", new[] { "*.go", "*.mod", "*.sum" } },
+                    { "rust", new[] { "*.rs", "*.toml" } },
+                    { "kotlin", new[] { "*.kt", "*.kts" } },
+                    { "swift", new[] { "*.swift" } },
+                    { "dart", new[] { "*.dart" } }
+                };
+
+                // Parse arguments
+                var maxResults = arguments.TryGetProperty("maxResults", out var maxElement) ?
+                    maxElement.GetInt32() : 200;
+
+                string[] searchPatterns;
+
+                // Check if custom extensions provided
+                if (arguments.TryGetProperty("extensions", out var extensionsElement) && extensionsElement.ValueKind == JsonValueKind.Array)
+                {
+                    searchPatterns = extensionsElement.EnumerateArray()
+                        .Select(e => e.GetString()!)
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(ext => ext.StartsWith("*.") ? ext : $"*.{ext.TrimStart('.')}")
+                        .ToArray();
+                }
+                else if (arguments.TryGetProperty("language", out var langElement))
+                {
+                    var language = langElement.GetString()?.ToLowerInvariant();
+                    if (language != null && languageExtensions.TryGetValue(language, out var extensions))
+                    {
+                        searchPatterns = extensions;
+                    }
+                    else
+                    {
+                        return new McpResponse
+                        {
+                            Id = requestId,
+                            Error = new McpError
+                            {
+                                Code = -32602,
+                                Message = $"Unknown language: {language}. Supported languages: {string.Join(", ", languageExtensions.Keys)}"
+                            }
+                        };
+                    }
+                }
+                else
+                {
+                    return new McpResponse
+                    {
+                        Id = requestId,
+                        Error = new McpError
+                        {
+                            Code = -32602,
+                            Message = "Either 'language' or 'extensions' parameter is required"
+                        }
+                    };
+                }
+
+                // Build search query
+                var directoryFilter = "";
+                if (arguments.TryGetProperty("directory", out var dirElement))
+                {
+                    var directory = dirElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        directoryFilter = $"\"{directory}\\\"";
+                    }
+                }
+
+                // Execute search for each pattern
+                var allResults = new List<SearchResult>();
+                foreach (var pattern in searchPatterns)
+                {
+                    var query = directoryFilter + pattern;
+                    var results = await _client.SearchFilesAsync(query, CancellationToken.None);
+                    allResults.AddRange(results);
+                }
+
+                // Remove duplicates and limit results
+                var uniqueResults = allResults
+                    .GroupBy(r => r.FullPath)
+                    .Select(g => g.First())
+                    .Take(maxResults)
+                    .ToArray();
+
+                var mcpResults = uniqueResults.Select(r => new
+                {
+                    name = r.Name,
+                    fullPath = r.FullPath,
+                    directory = r.Path,
+                    extension = Path.GetExtension(r.Name)
+                }).ToArray();
+
+                return new McpResponse
+                {
+                    Id = requestId,
+                    Result = new
+                    {
+                        content = new[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = $"Found {uniqueResults.Length} source files:\n\n" +
+                                      string.Join("\n", mcpResults.Select(r => $"📄 {r.name}\n   📁 {r.fullPath}"))
+                            }
+                        }
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                return new McpResponse
+                {
+                    Id = requestId,
+                    Error = new McpError
+                    {
+                        Code = -32603,
+                        Message = "Source files search failed",
+                        Data = ex.Message
+                    }
+                };
+            }
+        }
+
+        private async Task<McpResponse> HandleSearchRecentFilesAsync(object? requestId, JsonElement arguments)
+        {
+            try
+            {
+                // Parse arguments
+                var hours = arguments.TryGetProperty("hours", out var hoursElement) ?
+                    hoursElement.GetInt32() : 24;
+
+                var maxResults = arguments.TryGetProperty("maxResults", out var maxElement) ?
+                    maxElement.GetInt32() : 100;
+
+                // Build search query
+                var query = "*";
+
+                // Add file pattern if specified
+                if (arguments.TryGetProperty("filePattern", out var patternElement))
+                {
+                    var pattern = patternElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(pattern))
+                    {
+                        query = pattern;
+                    }
+                }
+
+                // Add directory filter if specified
+                var directoryFilter = "";
+                if (arguments.TryGetProperty("directory", out var dirElement))
+                {
+                    var directory = dirElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        directoryFilter = $"\"{directory}\\\"";
+                        query = directoryFilter + query;
+                    }
+                }
+
+                // Use QUERY2 to get modification dates
+                var results = await _client.SearchWithMetadataAsync(
+                    query,
+                    Query2RequestFlags.Name | Query2RequestFlags.Path | Query2RequestFlags.Size | Query2RequestFlags.DateModified,
+                    SearchFlags.None,
+                    CancellationToken.None);
+
+                // Filter by modification time
+                var cutoffTime = DateTime.Now.AddHours(-hours);
+                var recentFiles = results
+                    .Where(r => r.DateModified.HasValue && r.DateModified.Value >= cutoffTime)
+                    .OrderByDescending(r => r.DateModified)
+                    .Take(maxResults)
+                    .ToArray();
+
+                var mcpResults = recentFiles.Select(r => new
+                {
+                    name = r.Name,
+                    fullPath = r.FullPath,
+                    size = r.Size,
+                    dateModified = r.DateModified?.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    hoursAgo = r.DateModified.HasValue ?
+                        Math.Round((DateTime.Now - r.DateModified.Value).TotalHours, 1) : 0
+                }).ToArray();
+
+                return new McpResponse
+                {
+                    Id = requestId,
+                    Result = new
+                    {
+                        content = new[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = $"Found {recentFiles.Length} files modified in the last {hours} hours:\n\n" +
+                                      string.Join("\n", mcpResults.Select(r =>
+                                          $"📄 {r.name} (modified {r.hoursAgo}h ago)\n   📁 {r.fullPath}\n   📊 {FormatFileSize(r.size)}"))
+                            }
+                        }
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                return new McpResponse
+                {
+                    Id = requestId,
+                    Error = new McpError
+                    {
+                        Code = -32603,
+                        Message = "Recent files search failed",
+                        Data = ex.Message
+                    }
+                };
+            }
+        }
+
+        private async Task<McpResponse> HandleFindConfigFilesAsync(object? requestId, JsonElement arguments)
+        {
+            try
+            {
+                // Parse arguments
+                var configType = arguments.TryGetProperty("configType", out var typeElement) ?
+                    typeElement.GetString()?.ToLowerInvariant() : "all";
+
+                var maxResults = arguments.TryGetProperty("maxResults", out var maxElement) ?
+                    maxElement.GetInt32() : 100;
+
+                // Define config file patterns
+                var configPatterns = new Dictionary<string, string[]>
+                {
+                    { "npm", new[] { "package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc" } },
+                    { "dotnet", new[] { "*.csproj", "*.sln", "*.vbproj", "*.fsproj", "appsettings*.json", "web.config", "app.config" } },
+                    { "git", new[] { ".gitignore", ".gitattributes", ".gitmodules", ".gitconfig" } },
+                    { "vscode", new[] { "settings.json", "launch.json", "tasks.json", "extensions.json" } },
+                    { "docker", new[] { "Dockerfile", "docker-compose*.yml", "docker-compose*.yaml", ".dockerignore" } },
+                    { "build", new[] { "Makefile", "makefile", "*.make", "CMakeLists.txt", "*.cmake", "build.gradle", "pom.xml" } },
+                    { "env", new[] { ".env", ".env.*", "*.env" } },
+                    { "editor", new[] { ".editorconfig", "*.code-workspace" } }
+                };
+
+                string[] searchPatterns;
+
+                if (configType == "custom")
+                {
+                    if (arguments.TryGetProperty("customPattern", out var customElement))
+                    {
+                        var pattern = customElement.GetString();
+                        if (string.IsNullOrWhiteSpace(pattern))
+                        {
+                            return new McpResponse
+                            {
+                                Id = requestId,
+                                Error = new McpError
+                                {
+                                    Code = -32602,
+                                    Message = "customPattern is required when configType is 'custom'"
+                                }
+                            };
+                        }
+                        searchPatterns = new[] { pattern };
+                    }
+                    else
+                    {
+                        return new McpResponse
+                        {
+                            Id = requestId,
+                            Error = new McpError
+                            {
+                                Code = -32602,
+                                Message = "customPattern is required when configType is 'custom'"
+                            }
+                        };
+                    }
+                }
+                else if (configType == "all")
+                {
+                    searchPatterns = configPatterns.Values.SelectMany(p => p).ToArray();
+                }
+                else if (configPatterns.TryGetValue(configType!, out var patterns))
+                {
+                    searchPatterns = patterns;
+                }
+                else
+                {
+                    return new McpResponse
+                    {
+                        Id = requestId,
+                        Error = new McpError
+                        {
+                            Code = -32602,
+                            Message = $"Unknown configType: {configType}. Supported types: {string.Join(", ", configPatterns.Keys)}, all, custom"
+                        }
+                    };
+                }
+
+                // Build search query with directory filter if specified
+                var directoryFilter = "";
+                if (arguments.TryGetProperty("directory", out var dirElement))
+                {
+                    var directory = dirElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        directoryFilter = $"\"{directory}\\\"";
+                    }
+                }
+
+                // Execute search for each pattern
+                var allResults = new List<SearchResult>();
+                foreach (var pattern in searchPatterns)
+                {
+                    var query = directoryFilter + pattern;
+                    var results = await _client.SearchBasicAsync(query, SearchFlags.None, CancellationToken.None);
+                    allResults.AddRange(results);
+                }
+
+                // Remove duplicates and limit results
+                var uniqueResults = allResults
+                    .GroupBy(r => r.FullPath)
+                    .Select(g => g.First())
+                    .Take(maxResults)
+                    .ToArray();
+
+                // Group by config type for better presentation
+                var groupedResults = uniqueResults
+                    .GroupBy(r => GetConfigType(r.Name, configPatterns))
+                    .OrderBy(g => g.Key)
+                    .ToArray();
+
+                var resultText = $"Found {uniqueResults.Length} configuration files:\n\n";
+                foreach (var group in groupedResults)
+                {
+                    resultText += $"📋 {group.Key.ToUpperInvariant()} Configuration:\n";
+                    foreach (var file in group)
+                    {
+                        resultText += $"   📄 {file.Name}\n   📁 {file.FullPath}\n\n";
+                    }
+                }
+
+                return new McpResponse
+                {
+                    Id = requestId,
+                    Result = new
+                    {
+                        content = new[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = resultText.Trim()
+                            }
+                        }
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                return new McpResponse
+                {
+                    Id = requestId,
+                    Error = new McpError
+                    {
+                        Code = -32603,
+                        Message = "Config files search failed",
+                        Data = ex.Message
+                    }
+                };
+            }
+        }
+
+        private static string GetConfigType(string fileName, Dictionary<string, string[]> configPatterns)
+        {
+            foreach (var kvp in configPatterns)
+            {
+                if (kvp.Value.Any(pattern => IsPatternMatch(fileName, pattern)))
+                {
+                    return kvp.Key;
+                }
+            }
+            return "other";
+        }
+
+        private static bool IsPatternMatch(string fileName, string pattern)
+        {
+            if (pattern.Contains('*'))
+            {
+                var regex = "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$";
+                return Regex.IsMatch(fileName, regex, RegexOptions.IgnoreCase);
+            }
+            return string.Equals(fileName, pattern, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FormatFileSize(long? bytes)
+        {
+            if (!bytes.HasValue) return "Unknown size";
+
+            var b = bytes.Value;
+            if (b < 1024) return $"{b} B";
+            if (b < 1024 * 1024) return $"{b / 1024:F1} KB";
+            if (b < 1024 * 1024 * 1024) return $"{b / (1024 * 1024):F1} MB";
+            return $"{b / (1024 * 1024 * 1024):F1} GB";
         }
 
         public void Dispose()
