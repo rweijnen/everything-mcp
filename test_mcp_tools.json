@@ -1,0 +1,72 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {}
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list"
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "search_files",
+      "arguments": {
+        "query": "*.cs",
+        "maxResults": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "find_executable",
+      "arguments": {
+        "name": "notepad"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "find_source_files",
+      "arguments": {
+        "language": "csharp",
+        "maxResults": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "search_recent_files",
+      "arguments": {
+        "hours": 1,
+        "maxResults": 3
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "find_config_files",
+      "arguments": {
+        "configType": "dotnet",
+        "maxResults": 5
+      }
+    }
+  }
+]
