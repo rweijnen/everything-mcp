@@ -54,7 +54,7 @@ jobs:
         echo "Detected version: $version"
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore --runtime win-x64
 
     - name: Build
       run: |
