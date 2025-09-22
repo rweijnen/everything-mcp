@@ -20,7 +20,7 @@ public class EverythingClient : IEverythingClient
         _logger = logger;
         _ipc = new EverythingIpc();
         _logger.LogInformation("Creating dedicated message window thread for Everything IPC");
-        _messageWindowThread = new MessageWindowThread(_logger);
+        _messageWindowThread = new MessageWindowThread(_logger, _ipc.EverythingWindowHandle);
 
         if (_options.EnableAutoRefresh)
         {

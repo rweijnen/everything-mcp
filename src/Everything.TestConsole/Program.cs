@@ -111,7 +111,7 @@ internal class TestApplication
         }
     }
 
-    private async Task TestConnection()
+    private Task TestConnection()
     {
         Console.WriteLine("Testing Everything connection...");
 
@@ -128,6 +128,7 @@ internal class TestApplication
         Console.WriteLine($"   Database Busy: {_everythingClient.IsDbBusy}");
         Console.WriteLine($"   Running as Admin: {_everythingClient.IsAdmin}");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     private async Task TestBasicSearch()
@@ -224,7 +225,7 @@ internal class TestApplication
         Console.WriteLine();
     }
 
-    private async Task ShowStatus()
+    private Task ShowStatus()
     {
         Console.WriteLine();
         Console.WriteLine("Everything Status:");
@@ -234,6 +235,7 @@ internal class TestApplication
         Console.WriteLine($"  Database Busy: {_everythingClient.IsDbBusy}");
         Console.WriteLine($"  Admin: {_everythingClient.IsAdmin}");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     private async Task ExecuteSearch(string query)

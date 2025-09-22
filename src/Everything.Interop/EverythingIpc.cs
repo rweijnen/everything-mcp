@@ -22,6 +22,8 @@ public class EverythingIpc : IDisposable
     public bool IsEverythingRunning => _everythingWindow != IntPtr.Zero &&
                                       NativeMethods.IsWindow(_everythingWindow);
 
+    public IntPtr EverythingWindowHandle => _everythingWindow;
+
     public void RefreshEverythingWindow()
     {
         _everythingWindow = NativeMethods.FindWindow(Constants.EVERYTHING_IPC_WNDCLASS, null);
@@ -494,7 +496,7 @@ public class EverythingIpc : IDisposable
 
 
         return new SearchResult(
-            Name: name,
+            Name: name ?? string.Empty,
             Path: path,
             FullPath: resultFullPath,
             Flags: flags,

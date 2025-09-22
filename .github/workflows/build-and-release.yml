@@ -76,8 +76,6 @@ jobs:
           --output ./publish/mcp-server `
           --self-contained true `
           --runtime win-x64 `
-          -p:PublishSingleFile=true `
-          -p:IncludeNativeLibrariesForSelfExtract=true `
           -p:Version="${{ steps.version.outputs.version }}" `
           -p:AssemblyVersion="${{ steps.version.outputs.version }}" `
           -p:FileVersion="${{ steps.version.outputs.version }}" `

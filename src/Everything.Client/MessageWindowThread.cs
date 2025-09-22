@@ -19,6 +19,7 @@ internal class MessageWindowThread : IDisposable
     private readonly ConcurrentQueue<QueryRequest> _pendingResponses = new();
     private WndProcDelegate? _wndProcDelegate;
     private IntPtr _hwnd = IntPtr.Zero;
+    private IntPtr _everythingWindowHandle;
     private bool _disposed = false;
 
     private class QueryRequest
@@ -29,9 +30,10 @@ internal class MessageWindowThread : IDisposable
         public required CancellationToken CancellationToken { get; init; }
     }
 
-    public MessageWindowThread(ILogger logger)
+    public MessageWindowThread(ILogger logger, IntPtr everythingWindowHandle)
     {
         _logger = logger;
+        _everythingWindowHandle = everythingWindowHandle;
         _windowThread = new Thread(WindowThreadProc)
         {
             IsBackground = false, // Keep the thread alive
@@ -260,7 +262,21 @@ internal class MessageWindowThread : IDisposable
     {
         try
         {
-            _logger.LogDebug("Received WM_COPYDATA message, parsing response data");
+            // Security: Verify the message comes from Everything window
+            if (_everythingWindowHandle == IntPtr.Zero)
+            {
+                _logger.LogWarning("Received WM_COPYDATA but Everything window handle not set, ignoring message");
+                return;
+            }
+
+            if (wParam != _everythingWindowHandle)
+            {
+                _logger.LogWarning("Received WM_COPYDATA from untrusted sender (expected: {ExpectedHandle}, actual: {ActualHandle}), ignoring message",
+                    _everythingWindowHandle, wParam);
+                return;
+            }
+
+            _logger.LogDebug("Received WM_COPYDATA message from verified Everything window, parsing response data");
 
             var copyData = Marshal.PtrToStructure<CopyDataStruct>(lParam);
             _logger.LogDebug("CopyData: dwData={DwData}, cbData={CbData}, lpData={LpData}",

@@ -9,6 +9,7 @@ using Everything.Mcp;
 using Everything.Mcp.Configuration;
 using Serilog;
 using Serilog.Events;
+using System.Diagnostics.CodeAnalysis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -28,7 +29,7 @@ builder.Services.Configure<HostOptions>(options =>
 
 // Load configuration
 var config = new EverythingMcpConfiguration();
-builder.Configuration.GetSection("EverythingMcp").Bind(config);
+BindConfiguration(builder.Configuration.GetSection("EverythingMcp"), config);
 
 // Configure Serilog based on configuration
 var loggerConfig = new LoggerConfiguration();
@@ -75,7 +76,7 @@ builder.Services.AddSerilog();
 
 builder.Services.AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .WithTools<EverythingMcpTools>();
 
 // Register configuration
 builder.Services.AddSingleton(config);
@@ -104,3 +105,10 @@ lifetime.ApplicationStopping.Register(() =>
 
 // Run the MCP server
 await app.RunAsync();
+
+// Helper method to avoid trimming warnings
+[UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "Configuration binding is safe for known types")]
+static void BindConfiguration(IConfigurationSection section, EverythingMcpConfiguration config)
+{
+    section.Bind(config);
+}
