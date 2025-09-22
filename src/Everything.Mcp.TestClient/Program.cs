@@ -83,12 +83,19 @@ try
             // Parse the MCP response structure
             try
             {
-                var responseJson = JsonDocument.Parse(execResult.ToString());
+                var execResultString = execResult.ToString() ?? string.Empty;
+                var responseJson = JsonDocument.Parse(execResultString);
                 if (responseJson.RootElement.TryGetProperty("content", out var content) &&
                     content.GetArrayLength() > 0 &&
                     content[0].TryGetProperty("text", out var textElement))
                 {
                     var toolResultJson = textElement.GetString();
+                    if (toolResultJson == null)
+                    {
+                        Log.Warning("Tool result JSON is null");
+                        return 1;
+                    }
+
                     Log.Information("find_executable raw result: {Result}", toolResultJson);
 
                     // Parse the actual tool result JSON
@@ -144,12 +151,19 @@ try
             // Parse the MCP response structure
             try
             {
-                var responseJson = JsonDocument.Parse(searchResult.ToString());
+                var searchResultString = searchResult.ToString() ?? string.Empty;
+                var responseJson = JsonDocument.Parse(searchResultString);
                 if (responseJson.RootElement.TryGetProperty("content", out var content) &&
                     content.GetArrayLength() > 0 &&
                     content[0].TryGetProperty("text", out var textElement))
                 {
                     var toolResultJson = textElement.GetString();
+                    if (toolResultJson == null)
+                    {
+                        Log.Warning("Tool result JSON is null");
+                        return 1;
+                    }
+
                     Log.Information("search_files raw result: {Result}", toolResultJson);
 
                     // Parse the actual tool result JSON
