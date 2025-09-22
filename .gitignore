@@ -417,7 +417,6 @@ quick_*.ps1
 token_analysis.py
 compare_search.md
 nul
-src/Everything.TestConsole/BenchmarkProgram.cs
 
 # Temporary/corrupted path files
 "C:*"
