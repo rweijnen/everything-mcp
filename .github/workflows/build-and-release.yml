@@ -13,6 +13,9 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write  # Required for creating releases
+      packages: read   # Required for downloading packages
 
     steps:
     - uses: actions/checkout@v4
