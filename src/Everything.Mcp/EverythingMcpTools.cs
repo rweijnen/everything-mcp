@@ -1,4 +1,5 @@
 using Everything.Client;
+using Everything.Mcp.Models;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -39,38 +40,37 @@ public class EverythingMcpTools
 
             var limitedResults = results.Take(max_results).ToList();
 
-            return new
+            return new SearchResponse
             {
-                query = query,
-                scope = scope,
-                scoped_query = scopedQuery,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
+                Query = query,
+                Scope = scope,
+                TotalFound = results.Length,
+                Returned = limitedResults.Count,
+                IncludeMetadata = include_metadata,
+                Results = limitedResults.Select(r => new FileResult
                 {
-                    name = r.Name,
-                    path = r.Path,
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
+                    Name = r.Name,
+                    Path = r.Path,
+                    IsFolder = r.IsFolder,
+                    Size = include_metadata ? r.Size : null,
+                    DateModified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateCreated = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateAccessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : null
                 }).ToList()
             };
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while searching files with query: {Query}", query);
-            return new
+            return new SearchResponse
             {
-                query = query,
-                scope = scope,
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                Query = query,
+                Scope = scope,
+                TotalFound = 0,
+                Returned = 0,
+                IncludeMetadata = include_metadata,
+                Error = "Service is shutting down, please try again",
+                Results = new List<FileResult>()
             };
         }
         catch (Exception ex)
@@ -99,40 +99,40 @@ public class EverythingMcpTools
 
             var limitedResults = results.Take(max_results).ToList();
 
-            return new
+            return new ProjectSearchResponse
             {
-                project_path = project_path,
-                pattern = pattern,
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
+                ProjectPath = project_path,
+                Pattern = pattern,
+                Query = query,
+                TotalFound = results.Length,
+                Returned = limitedResults.Count,
+                IncludeMetadata = include_metadata,
+                Results = limitedResults.Select(r => new ProjectFileResult
                 {
-                    name = r.Name,
-                    path = r.Path,
-                    relative_path = Path.GetRelativePath(normalizedPath, r.Path),
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
+                    Name = r.Name,
+                    Path = r.Path,
+                    RelativePath = Path.GetRelativePath(normalizedPath, r.Path),
+                    IsFolder = r.IsFolder,
+                    Size = include_metadata ? r.Size : null,
+                    DateModified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateCreated = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateAccessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : null
                 }).ToList()
             };
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while searching in project {ProjectPath} with pattern: {Pattern}", project_path, pattern);
-            return new
+            return new ProjectSearchResponse
             {
-                project_path = project_path,
-                pattern = pattern,
-                query = $"{project_path}\\{pattern}",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ProjectPath = project_path,
+                Pattern = pattern,
+                Query = $"{project_path}\\{pattern}",
+                TotalFound = 0,
+                Returned = 0,
+                IncludeMetadata = include_metadata,
+                Error = "Service is shutting down, please try again",
+                Results = new List<ProjectFileResult>()
             };
         }
         catch (Exception ex)
@@ -184,33 +184,30 @@ public class EverythingMcpTools
             var limitedResults = results.Take(max_results).ToList();
             _logger.LogDebug("Limited to {Count} results", limitedResults.Count);
 
-            return new
+            return new ExecutableResponse
             {
-                search_name = name,
-                exact_match = shouldBeExact, // Show computed value, not input parameter
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                results = limitedResults.Select(r => new
+                Query = name,
+                ExactMatch = shouldBeExact,
+                TotalFound = results.Length,
+                Returned = limitedResults.Count,
+                Executables = limitedResults.Select(r => new ExecutableResult
                 {
-                    name = r.Name,
-                    path = r.Path,
-                    is_folder = r.IsFolder
+                    Name = r.Name,
+                    Path = r.Path,
+                    Exists = true // All results from Everything exist
                 }).ToList()
             };
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while finding executable: {Name}", name);
-            return new
+            return new ExecutableResponse
             {
-                search_name = name,
-                exact_match = exact_match,
-                query = "",
-                total_found = 0,
-                returned = 0,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                Query = name,
+                ExactMatch = exact_match,
+                TotalFound = 0,
+                Returned = 0,
+                Executables = new List<ExecutableResult>()
             };
         }
         catch (Exception ex)
@@ -243,40 +240,40 @@ public class EverythingMcpTools
 
             var limitedResults = results.Take(max_results).ToList();
 
-            return new
+            return new SourceFileResponse
             {
-                filename = filename,
-                extensions_searched = allExtensions,
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
+                Filename = filename,
+                ExtensionsSearched = allExtensions,
+                Query = query,
+                TotalFound = results.Length,
+                Returned = limitedResults.Count,
+                IncludeMetadata = include_metadata,
+                Results = limitedResults.Select(r => new SourceFileResult
                 {
-                    name = r.Name,
-                    path = r.Path,
-                    extension = Path.GetExtension(r.Name),
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
+                    Name = r.Name,
+                    Path = r.Path,
+                    Extension = Path.GetExtension(r.Name),
+                    IsFolder = r.IsFolder,
+                    Size = include_metadata ? r.Size : null,
+                    DateModified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateCreated = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateAccessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : null
                 }).ToList()
             };
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while finding source files: {Filename}", filename);
-            return new
+            return new SourceFileResponse
             {
-                filename = filename,
-                extensions_searched = new string[0],
-                query = "",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                Filename = filename,
+                ExtensionsSearched = new string[0],
+                Query = "",
+                TotalFound = 0,
+                Returned = 0,
+                IncludeMetadata = include_metadata,
+                Error = "Service is shutting down, please try again",
+                Results = new List<SourceFileResult>()
             };
         }
         catch (Exception ex)
@@ -311,42 +308,42 @@ public class EverythingMcpTools
                 .Take(max_results)
                 .ToList();
 
-            return new
+            return new RecentFilesResponse
             {
-                hours_back = hours,
-                cutoff_date = cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"),
-                pattern = pattern,
-                query = query,
-                total_found = results.Length,
-                returned = sortedResults.Count,
-                include_metadata = include_metadata,
-                results = sortedResults.Select(r => new
+                HoursBack = hours,
+                CutoffDate = cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                Pattern = pattern,
+                Query = query,
+                TotalFound = results.Length,
+                Returned = sortedResults.Count,
+                IncludeMetadata = include_metadata,
+                Results = sortedResults.Select(r => new RecentFileResult
                 {
-                    name = r.Name,
-                    path = r.Path,
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    hours_ago = r.DateModified.HasValue ? (double?)(DateTime.Now - r.DateModified.Value).TotalHours : null
+                    Name = r.Name,
+                    Path = r.Path,
+                    IsFolder = r.IsFolder,
+                    Size = include_metadata ? r.Size : null,
+                    DateModified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateCreated = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateAccessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    HoursAgo = r.DateModified.HasValue ? (DateTime.Now - r.DateModified.Value).TotalHours : null
                 }).ToList()
             };
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while searching recent files");
-            return new
+            return new RecentFilesResponse
             {
-                hours_back = hours,
-                cutoff_date = DateTime.Now.AddHours(-hours).ToString("yyyy-MM-dd HH:mm:ss"),
-                pattern = pattern,
-                query = "",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                HoursBack = hours,
+                CutoffDate = DateTime.Now.AddHours(-hours).ToString("yyyy-MM-dd HH:mm:ss"),
+                Pattern = pattern,
+                Query = "",
+                TotalFound = 0,
+                Returned = 0,
+                IncludeMetadata = include_metadata,
+                Error = "Service is shutting down, please try again",
+                Results = new List<RecentFileResult>()
             };
         }
         catch (Exception ex)
@@ -391,43 +388,43 @@ public class EverythingMcpTools
 
             var limitedResults = results.Take(max_results).ToList();
 
-            return new
+            return new ConfigFilesResponse
             {
-                project_path = project_path,
-                config_extensions = configExtensions,
-                config_names = configNames,
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
+                ProjectPath = project_path,
+                ConfigExtensions = configExtensions,
+                ConfigNames = configNames,
+                Query = query,
+                TotalFound = results.Length,
+                Returned = limitedResults.Count,
+                IncludeMetadata = include_metadata,
+                Results = limitedResults.Select(r => new ConfigFileResult
                 {
-                    name = r.Name,
-                    path = r.Path,
-                    relative_path = !string.IsNullOrEmpty(project_path) ? Path.GetRelativePath(project_path, r.Path) : null,
-                    type = Path.GetExtension(r.Name).ToLowerInvariant(),
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
+                    Name = r.Name,
+                    Path = r.Path,
+                    RelativePath = !string.IsNullOrEmpty(project_path) ? Path.GetRelativePath(project_path, r.Path) : null,
+                    Type = Path.GetExtension(r.Name).ToLowerInvariant(),
+                    IsFolder = r.IsFolder,
+                    Size = include_metadata ? r.Size : null,
+                    DateModified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateCreated = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    DateAccessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : null
                 }).ToList()
             };
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while finding config files in: {ProjectPath}", project_path);
-            return new
+            return new ConfigFilesResponse
             {
-                project_path = project_path,
-                config_extensions = new string[0],
-                config_names = new string[0],
-                query = "",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ProjectPath = project_path,
+                ConfigExtensions = new string[0],
+                ConfigNames = new string[0],
+                Query = "",
+                TotalFound = 0,
+                Returned = 0,
+                IncludeMetadata = include_metadata,
+                Error = "Service is shutting down, please try again",
+                Results = new List<ConfigFileResult>()
             };
         }
         catch (Exception ex)

@@ -2,6 +2,8 @@
 
 A high-performance Model Context Protocol (MCP) server that provides file search capabilities using the Everything Search Engine on Windows.
 
+> **⚠️ Work in Progress**: The current implementation on the main branch has architectural issues and is being refactored. A simplified queue-based architecture is being developed on a separate branch. The core Everything integration and IPC communication are working correctly.
+
 ## Features
 
 - ⚡ Lightning-fast file search using Everything's indexed database

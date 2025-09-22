@@ -263,6 +263,9 @@ internal class MessageWindowThread : IDisposable
         try
         {
             // Security: Verify the message comes from Everything window
+            _logger.LogDebug("DEBUG: Received WM_COPYDATA from handle {SenderHandle:X}, Everything handle is {EverythingHandle:X}",
+                wParam, _everythingWindowHandle);
+
             if (_everythingWindowHandle == IntPtr.Zero)
             {
                 _logger.LogWarning("Received WM_COPYDATA but Everything window handle not set, ignoring message");
@@ -271,7 +274,7 @@ internal class MessageWindowThread : IDisposable
 
             if (wParam != _everythingWindowHandle)
             {
-                _logger.LogWarning("Received WM_COPYDATA from untrusted sender (expected: {ExpectedHandle}, actual: {ActualHandle}), ignoring message",
+                _logger.LogWarning("Received WM_COPYDATA from untrusted sender (expected: {ExpectedHandle:X}, actual: {ActualHandle:X}), ignoring message",
                     _everythingWindowHandle, wParam);
                 return;
             }

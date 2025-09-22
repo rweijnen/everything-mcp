@@ -9,18 +9,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>everything-mcp</AssemblyName>
 
-    <!-- Publishing options to exclude debug files and web artifacts -->
-    <DebugType>none</DebugType>
-    <DebugSymbols>false</DebugSymbols>
-    <PublishReadyToRun>false</PublishReadyToRun>
-    <PublishTrimmed>true</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
+    <!-- Publishing options only for Release builds -->
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <!-- Exclude .pdb files from publish output -->
-    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
 
     <!-- Version information -->
     <Version>1.0.0</Version>
@@ -35,6 +26,25 @@
     <AssemblyProduct>Everything MCP Server</AssemblyProduct>
     <Copyright>Copyright © 2025 Remko Weijnen</Copyright>
     <Authors>Remko Weijnen</Authors>
+  </PropertyGroup>
+
+  <!-- Release-specific settings for optimized single-file output -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <TrimmerRootDescriptorFile>Trimming.xml</TrimmerRootDescriptorFile>
+  </PropertyGroup>
+
+  <!-- Debug-specific settings -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>

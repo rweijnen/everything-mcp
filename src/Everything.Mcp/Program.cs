@@ -81,27 +81,16 @@ builder.Services.AddMcpServer()
 // Register configuration
 builder.Services.AddSingleton(config);
 
-// Register Everything service for proper lifecycle management
-builder.Services.AddSingleton<EverythingService>();
-builder.Services.AddSingleton<IEverythingClient>(provider => provider.GetRequiredService<EverythingService>().Client);
-builder.Services.AddHostedService<EverythingService>(provider => provider.GetRequiredService<EverythingService>());
+// Register Everything client directly
+builder.Services.Configure<EverythingClientOptions>(options =>
+{
+    options.EnableAutoRefresh = config.EverythingClient.EnableAutoRefresh;
+    options.RefreshInterval = TimeSpan.FromMinutes(config.EverythingClient.RefreshIntervalMinutes);
+    options.DefaultTimeoutMs = config.EverythingClient.DefaultTimeoutMs;
+});
+builder.Services.AddSingleton<IEverythingClient, EverythingClient>();
 
 var app = builder.Build();
-
-// Everything client will be initialized by the hosted service
-// Log.Information("MCP server configured and ready to start"); // Commented to prevent MCP protocol interference
-
-// Ensure graceful shutdown
-var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-lifetime.ApplicationStarted.Register(() =>
-{
-    // Log.Information("MCP server started and ready for requests"); // Commented to prevent MCP protocol interference
-});
-
-lifetime.ApplicationStopping.Register(() =>
-{
-    // Log.Information("MCP server shutting down"); // Commented to prevent MCP protocol interference
-});
 
 // Run the MCP server
 await app.RunAsync();
