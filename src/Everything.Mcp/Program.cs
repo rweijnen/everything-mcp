@@ -1,103 +1,44 @@
-using Microsoft.Extensions.Configuration;
+using Everything.Client;
+using Everything.Mcp.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol;
-using ModelContextProtocol.Server;
-using Everything.Client;
-using Everything.Mcp;
-using Everything.Mcp.Configuration;
 using Serilog;
-using Serilog.Events;
-using System.Diagnostics.CodeAnalysis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Re-add configuration sources for appsettings.json support
-builder.Configuration.Sources.Clear();
-builder.Configuration
-    .SetBasePath(Directory.GetCurrentDirectory())
-    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-    .AddEnvironmentVariables()
-    .AddCommandLine(args);
+// Configure Serilog for file logging only (never to console to keep MCP protocol clean)
+// Ensure logs directory exists
+var logsDir = Path.Combine(AppContext.BaseDirectory, "logs");
+Directory.CreateDirectory(logsDir);
 
-// Configure host options for better shutdown handling
-builder.Services.Configure<HostOptions>(options =>
-{
-    options.ShutdownTimeout = TimeSpan.FromSeconds(10);
-});
+// Configure Serilog as the main logger
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .CreateLogger();
 
-// Load configuration
-var config = new EverythingMcpConfiguration();
-BindConfiguration(builder.Configuration.GetSection("EverythingMcp"), config);
+// Test log to verify logging is working
+Log.Information("Everything MCP Server starting up at {Timestamp}", DateTime.Now);
 
-// Configure Serilog based on configuration
-var loggerConfig = new LoggerConfiguration();
+// Clear default console logging to keep stdout/stderr clean for MCP protocol
+builder.Logging.ClearProviders();
+builder.Logging.AddSerilog();
 
-// Parse log level
-if (Enum.TryParse<LogEventLevel>(config.Logging.LogLevel, true, out var logLevel))
-{
-    loggerConfig.MinimumLevel.Is(logLevel);
-}
-else
-{
-    loggerConfig.MinimumLevel.Information();
-}
+// Register Everything client with default options
+builder.Services.AddSingleton<IEverythingClient, EverythingClient>();
 
-// Explicitly disable console logging to prevent MCP protocol interference
-// MCP uses stdin/stdout for JSON-RPC communication, so console output breaks the protocol
-
-// Add file logging only if enabled
-if (config.Logging.Enabled)
-{
-    // Expand environment variables in path
-    var logPath = Environment.ExpandEnvironmentVariables(config.Logging.LogFilePath);
-
-    // Parse rolling interval
-    if (Enum.TryParse<RollingInterval>(config.Logging.RollingInterval, true, out var rollingInterval))
-    {
-        loggerConfig.WriteTo.File(logPath,
-            rollingInterval: rollingInterval,
-            retainedFileCountLimit: config.Logging.RetainedFileCountLimit,
-            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
-    }
-    else
-    {
-        loggerConfig.WriteTo.File(logPath,
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: config.Logging.RetainedFileCountLimit,
-            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
-    }
-}
-
-Log.Logger = loggerConfig.CreateLogger();
-
-builder.Services.AddSerilog();
-
-builder.Services.AddMcpServer()
+// Add the MCP services: the transport to use (stdio) and the tools to register.
+builder.Services
+    .AddMcpServer()
     .WithStdioServerTransport()
     .WithTools<EverythingMcpTools>();
 
-// Register configuration
-builder.Services.AddSingleton(config);
-
-// Register Everything client directly
-builder.Services.Configure<EverythingClientOptions>(options =>
+try
 {
-    options.EnableAutoRefresh = config.EverythingClient.EnableAutoRefresh;
-    options.RefreshInterval = TimeSpan.FromMinutes(config.EverythingClient.RefreshIntervalMinutes);
-    options.DefaultTimeoutMs = config.EverythingClient.DefaultTimeoutMs;
-});
-builder.Services.AddSingleton<IEverythingClient, EverythingClient>();
-
-var app = builder.Build();
-
-// Run the MCP server
-await app.RunAsync();
-
-// Helper method to avoid trimming warnings
-[UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "Configuration binding is safe for known types")]
-static void BindConfiguration(IConfigurationSection section, EverythingMcpConfiguration config)
+    var host = builder.Build();
+    await host.RunAsync();
+}
+finally
 {
-    section.Bind(config);
+    Log.CloseAndFlush();
 }

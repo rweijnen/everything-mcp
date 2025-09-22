@@ -4,6 +4,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Everything.Interop;
 
+/// <summary>
+/// Provides low-level IPC communication with the Everything Search Engine.
+/// Handles Windows message-based communication using WM_COPYDATA for queries and responses.
+/// </summary>
+/// <remarks>
+/// This class manages the native Windows IPC protocol with Everything.exe.
+/// It supports both QUERY1 (basic name/path) and QUERY2 (metadata) protocols.
+/// Thread-safe for concurrent queries but each instance should be used from a single thread.
+/// </remarks>
 public class EverythingIpc : IDisposable
 {
     private const int DefaultTimeoutMs = 5000;
@@ -13,22 +22,46 @@ public class EverythingIpc : IDisposable
     private bool _disposed = false;
     private readonly ILogger? _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the EverythingIpc class.
+    /// </summary>
+    /// <param name="logger">Optional logger for debugging IPC communication.</param>
     public EverythingIpc(ILogger? logger = null)
     {
         _logger = logger;
         RefreshEverythingWindow();
     }
 
+    /// <summary>
+    /// Gets a value indicating whether Everything Search Engine is currently running and accessible.
+    /// </summary>
+    /// <value>True if Everything is running and the window handle is valid; otherwise, false.</value>
     public bool IsEverythingRunning => _everythingWindow != IntPtr.Zero &&
                                       NativeMethods.IsWindow(_everythingWindow);
 
+    /// <summary>
+    /// Gets the window handle of the Everything Search Engine process.
+    /// </summary>
+    /// <value>The HWND of Everything's main window, or IntPtr.Zero if not found.</value>
     public IntPtr EverythingWindowHandle => _everythingWindow;
 
+    /// <summary>
+    /// Refreshes the cached Everything window handle by searching for the Everything process.
+    /// </summary>
+    /// <remarks>
+    /// Call this method if Everything was started after this instance was created,
+    /// or if you suspect the window handle has become invalid.
+    /// </remarks>
     public void RefreshEverythingWindow()
     {
         _everythingWindow = NativeMethods.FindWindow(Constants.EVERYTHING_IPC_WNDCLASS, null);
     }
 
+    /// <summary>
+    /// Gets the major version number of the Everything Search Engine.
+    /// </summary>
+    /// <returns>The major version number (e.g., 1 for version 1.4.1).</returns>
+    /// <exception cref="EverythingIpcException">Thrown when Everything is not running or communication fails.</exception>
     public uint GetMajorVersion()
     {
         EnsureEverythingRunning();
@@ -37,6 +70,11 @@ public class EverythingIpc : IDisposable
         return (uint)result.ToInt32();
     }
 
+    /// <summary>
+    /// Gets the minor version number of the Everything Search Engine.
+    /// </summary>
+    /// <returns>The minor version number (e.g., 4 for version 1.4.1).</returns>
+    /// <exception cref="EverythingIpcException">Thrown when Everything is not running or communication fails.</exception>
     public uint GetMinorVersion()
     {
         EnsureEverythingRunning();
@@ -45,6 +83,11 @@ public class EverythingIpc : IDisposable
         return (uint)result.ToInt32();
     }
 
+    /// <summary>
+    /// Gets the revision number of the Everything Search Engine.
+    /// </summary>
+    /// <returns>The revision number (e.g., 1 for version 1.4.1).</returns>
+    /// <exception cref="EverythingIpcException">Thrown when Everything is not running or communication fails.</exception>
     public uint GetRevision()
     {
         EnsureEverythingRunning();
@@ -116,6 +159,22 @@ public class EverythingIpc : IDisposable
             EverythingIpcCommands.SAVE_DB, 0);
     }
 
+    /// <summary>
+    /// Executes a search query using Everything's IPC protocol.
+    /// Automatically selects QUERY1 (basic) or QUERY2 (metadata) based on search options.
+    /// </summary>
+    /// <param name="options">The search options including query string and requested metadata.</param>
+    /// <param name="replyHwnd">Window handle to receive the search results via WM_COPYDATA.</param>
+    /// <param name="replyMessage">Custom message ID for the reply (usually WM_COPYDATA).</param>
+    /// <returns>An array of search results with requested metadata.</returns>
+    /// <exception cref="ArgumentException">Thrown when query is null, empty, or too long.</exception>
+    /// <exception cref="EverythingIpcException">Thrown when Everything is not running or communication fails.</exception>
+    /// <remarks>
+    /// This method automatically chooses between QUERY1 and QUERY2 protocols:
+    /// - QUERY1: Used for basic name/path searches (faster, ~20-30ms)
+    /// - QUERY2: Used when metadata like size, dates, or attributes are requested (~50-100ms)
+    /// Maximum query length is 32,000 characters.
+    /// </remarks>
     public unsafe SearchResult[] QueryW(SearchOptions options, IntPtr replyHwnd, uint replyMessage)
     {
         EnsureEverythingRunning();
@@ -193,6 +252,20 @@ public class EverythingIpc : IDisposable
         }
     }
 
+    /// <summary>
+    /// Executes a search query using Everything's QUERY2 protocol with full metadata support.
+    /// </summary>
+    /// <param name="options">The search options including query string and requested metadata fields.</param>
+    /// <param name="replyHwnd">Window handle to receive the search results via WM_COPYDATA.</param>
+    /// <param name="replyMessage">Custom message ID for the reply (usually WM_COPYDATA).</param>
+    /// <returns>An array of search results with full metadata including size, dates, and attributes.</returns>
+    /// <exception cref="ArgumentException">Thrown when query is null, empty, or too long.</exception>
+    /// <exception cref="EverythingIpcException">Thrown when Everything is not running or communication fails.</exception>
+    /// <remarks>
+    /// QUERY2 protocol provides rich metadata but is slower than QUERY1.
+    /// Supports file sizes, creation/modification/access dates, and file attributes.
+    /// Use this when you need metadata; otherwise use QueryW() which auto-selects the optimal protocol.
+    /// </remarks>
     public unsafe SearchResult[] Query2W(SearchOptions options, IntPtr replyHwnd, uint replyMessage)
     {
         EnsureEverythingRunning();
