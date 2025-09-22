@@ -36,11 +36,24 @@ jobs:
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "is_release=true" >> $env:GITHUB_OUTPUT
         } else {
-          # For non-tagged builds, use git describe with fallback
+          # For non-tagged builds, use git describe with smart version bumping
           try {
             $gitVersion = git describe --tags --always --dirty 2>$null
             if ($LASTEXITCODE -eq 0 -and $gitVersion) {
-              $version = $gitVersion -replace '^v', ''
+              # Convert git describe format to valid .NET version with auto-increment
+              $cleanVersion = $gitVersion -replace '^v', ''
+              # If it has git commit info (e.g., "0.3.0-1-gcc93bf9"), auto-increment patch version
+              if ($cleanVersion -match '^(\d+)\.(\d+)\.(\d+)-(\d+)-g([a-f0-9]+)(.*)$') {
+                $major = $matches[1]
+                $minor = $matches[2]
+                $patch = [int]$matches[3] + 1  # Auto-increment patch version
+                $commitCount = $matches[4]
+                $commitHash = $matches[5]
+                $dirty = $matches[6]
+                $version = "$major.$minor.$patch-dev.$commitCount+$commitHash$dirty"
+              } else {
+                $version = $cleanVersion
+              }
             } else {
               # Fallback to commit SHA
               $version = "1.0.0-dev+$("${{ github.sha }}".Substring(0,7))"
