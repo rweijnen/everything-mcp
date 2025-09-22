@@ -1,5 +1,6 @@
 using Everything.Client;
 using Everything.Mcp;
+using Everything.Mcp.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,7 @@ namespace Everything.Integration.Tests;
 /// </summary>
 public class SharedMcpFixture : IDisposable
 {
-    public EverythingMcpTools MpcTools { get; }
+    internal EverythingMcpTools MpcTools { get; }
     public ServiceProvider ServiceProvider { get; }
 
     public SharedMcpFixture()

@@ -64,10 +64,21 @@ jobs:
           -p:FileVersion="${{ steps.version.outputs.version }}" `
           -p:InformationalVersion="${{ steps.version.outputs.version }}"
 
-    - name: Test (Unit Tests Only)
+    - name: Test
       run: |
+        # Run unit tests (always work)
         dotnet test tests/Everything.Interop.Tests/Everything.Interop.Tests.csproj --no-build --configuration Release --verbosity normal
-      # Note: Integration tests require Everything.exe running, so we skip them in CI
+
+        # Try to run integration tests (requires Everything.exe)
+        # Install Everything if not present, then run integration tests
+        $everythingPath = "${env:ProgramFiles}\Everything\Everything.exe"
+        if (Test-Path $everythingPath) {
+          Write-Host "Everything.exe found, running integration tests..."
+          dotnet test tests/Everything.Integration.Tests/Everything.Integration.Tests.csproj --no-build --configuration Release --verbosity normal
+        } else {
+          Write-Host "Everything.exe not found, skipping integration tests in CI"
+          Write-Host "Integration tests require Everything Search Engine to be installed and running"
+        }
 
     - name: Publish MCP Server
       run: |

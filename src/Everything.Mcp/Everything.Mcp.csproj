@@ -1,64 +1,62 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <RootNamespace>Everything.Mcp</RootNamespace>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <RollForward>Major</RollForward>
+    <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>everything-mcp</AssemblyName>
-
-    <!-- Publishing options only for Release builds -->
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-
-    <!-- Version information -->
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
-    <InformationalVersion>1.0.0</InformationalVersion>
-
-    <!-- Assembly metadata -->
-    <AssemblyTitle>Everything MCP Server</AssemblyTitle>
-    <AssemblyDescription>A Model Context Protocol server that provides file search capabilities using Everything Search Engine</AssemblyDescription>
-    <AssemblyCompany>Remko Weijnen</AssemblyCompany>
-    <AssemblyProduct>Everything MCP Server</AssemblyProduct>
-    <Copyright>Copyright © 2025 Remko Weijnen</Copyright>
-    <Authors>Remko Weijnen</Authors>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <!-- Release-specific settings for optimized single-file output -->
+  <!-- Allow test assemblies to access internal types -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Everything.Integration.Tests" />
+  </ItemGroup>
+
+  <!-- Single file and trimming configuration for Release builds -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <DebugType>none</DebugType>
-    <DebugSymbols>false</DebugSymbols>
-    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
-    <TrimmerRootDescriptorFile>Trimming.xml</TrimmerRootDescriptorFile>
+    <IncludeNativeLibrariesForSelfContained>true</IncludeNativeLibrariesForSelfContained>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+
+    <!-- Set up the NuGet package to be an MCP server -->
+    <PackAsTool>true</PackAsTool>
+    <PackageType>McpServer</PackageType>
+
+    <!-- Set recommended package metadata -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageId>Everything.Mcp</PackageId>
+    <PackageVersion>0.0.3</PackageVersion>
+    <PackageTags>AI; MCP; server; stdio; everything; search; files</PackageTags>
+    <Description>Everything MCP server providing file search capabilities using Everything Search Engine.</Description>
   </PropertyGroup>
 
-  <!-- Debug-specific settings -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <DebugType>full</DebugType>
-    <DebugSymbols>true</DebugSymbols>
-    <PublishTrimmed>false</PublishTrimmed>
-  </PropertyGroup>
-
+  <!-- Include additional files for browsing the MCP server. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
-    <PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.4" />
-    <PackageReference Include="System.Text.Json" Version="9.0.9" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.9" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.9" />
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <None Include=".mcp\server.json" Pack="true" PackagePath="/.mcp/" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Everything.Client\Everything.Client.csproj" />
+    <ProjectReference Include="..\Everything.Interop\Everything.Interop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.6.25358.103" />
+    <PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.2" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
 
 </Project>
