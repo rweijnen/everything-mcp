@@ -1,6 +1,7 @@
 using Everything.Interop;
 using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 
 namespace Everything.Client;
 
@@ -13,6 +14,7 @@ internal unsafe class Win32MessageWindow : IDisposable
     private IntPtr _hwnd = IntPtr.Zero;
     private bool _disposed = false;
     private readonly WndProcDelegate _wndProcDelegate;
+    private readonly ILogger _logger;
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -99,8 +101,9 @@ internal unsafe class Win32MessageWindow : IDisposable
     private const uint MSGFLT_DISALLOW = 2;
 
 
-    public Win32MessageWindow()
+    public Win32MessageWindow(ILogger logger)
     {
+        _logger = logger;
         _wndProcDelegate = WndProc;
         CreateMessageWindow();
 
@@ -113,7 +116,7 @@ internal unsafe class Win32MessageWindow : IDisposable
 
     private void TestSelfMessage()
     {
-        Console.WriteLine("DEBUG: Testing self WM_COPYDATA message...");
+        // DEBUG: Testing self WM_COPYDATA message (removed console output for MCP stdio)
 
         var testData = "Hello from self!";
         var testBytes = System.Text.Encoding.UTF8.GetBytes(testData);
@@ -136,7 +139,7 @@ internal unsafe class Win32MessageWindow : IDisposable
                 Marshal.StructureToPtr(copyData, copyDataPtr, false);
 
                 var result = SendMessage(_hwnd, 0x004A, _hwnd, copyDataPtr); // WM_COPYDATA = 0x004A
-                Console.WriteLine($"DEBUG: Self-message SendMessage result: {result}");
+                // DEBUG: Self-message SendMessage result (removed console output for MCP stdio)
             }
             finally
             {
@@ -216,8 +219,11 @@ internal unsafe class Win32MessageWindow : IDisposable
 
         try
         {
-            using var ipc = new EverythingIpc();
+            _logger.LogDebug("Starting IPC query for QueryId: {QueryId}", queryId);
+            using var ipc = new EverythingIpc(_logger);
+            _logger.LogDebug("Sending IPC QueryW message for QueryId: {QueryId}", queryId);
             ipc.QueryW(options, _hwnd, queryId);
+            _logger.LogDebug("IPC QueryW message sent, waiting for response for QueryId: {QueryId}", queryId);
 
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
@@ -233,23 +239,40 @@ internal unsafe class Win32MessageWindow : IDisposable
             });
 
             // Pump messages on current thread while waiting for response
+            _logger.LogDebug("Starting message pump for QueryId: {QueryId}, timeout: {TimeoutMs}ms", queryId, timeoutMs);
             var startTime = Environment.TickCount;
+            var lastLogTime = startTime;
+            var messageCount = 0;
+
             while (!tcs.Task.IsCompleted && !combinedCts.Token.IsCancellationRequested)
             {
                 if (PeekMessage(out var msg, _hwnd, 0, 0, 1)) // PM_REMOVE = 1, check our specific window
                 {
+                    messageCount++;
+                    _logger.LogTrace("Processing message {MessageType} for QueryId: {QueryId} (msg #{Count})", msg.message, queryId, messageCount);
                     TranslateMessage(ref msg);
                     DispatchMessage(ref msg);
                 }
                 Thread.Sleep(1);
 
-                // Safety timeout
-                if (Environment.TickCount - startTime > timeoutMs)
+                // Log progress every 5 seconds
+                var currentTime = Environment.TickCount;
+                if (currentTime - lastLogTime > 5000)
                 {
+                    _logger.LogDebug("Still waiting for response QueryId: {QueryId}, elapsed: {ElapsedMs}ms, messages processed: {MessageCount}",
+                        queryId, currentTime - startTime, messageCount);
+                    lastLogTime = currentTime;
+                }
+
+                // Safety timeout
+                if (currentTime - startTime > timeoutMs)
+                {
+                    _logger.LogWarning("Safety timeout reached for QueryId: {QueryId} after {ElapsedMs}ms", queryId, currentTime - startTime);
                     break;
                 }
             }
 
+            _logger.LogDebug("Message pump completed for QueryId: {QueryId}, task status: {TaskStatus}", queryId, tcs.Task.Status);
             return tcs.Task;
         }
         catch

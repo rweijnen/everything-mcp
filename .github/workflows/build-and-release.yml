@@ -16,20 +16,55 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for git describe
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    - name: Extract version information
+      id: version
+      run: |
+        if ("${{ github.ref_type }}" -eq "tag") {
+          # For tagged releases, use the tag name (remove 'v' prefix if present)
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "is_release=true" >> $env:GITHUB_OUTPUT
+        } else {
+          # For non-tagged builds, use git describe with fallback
+          try {
+            $gitVersion = git describe --tags --always --dirty 2>$null
+            if ($LASTEXITCODE -eq 0 -and $gitVersion) {
+              $version = $gitVersion -replace '^v', ''
+            } else {
+              # Fallback to commit SHA
+              $version = "1.0.0-dev+$("${{ github.sha }}".Substring(0,7))"
+            }
+          } catch {
+            $version = "1.0.0-dev+$("${{ github.sha }}".Substring(0,7))"
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "is_release=false" >> $env:GITHUB_OUTPUT
+        }
+        echo "Detected version: $version"
+
     - name: Restore dependencies
       run: dotnet restore
 
     - name: Build
-      run: dotnet build --no-restore --configuration Release
+      run: |
+        dotnet build --no-restore --configuration Release `
+          -p:Version="${{ steps.version.outputs.version }}" `
+          -p:AssemblyVersion="${{ steps.version.outputs.version }}" `
+          -p:FileVersion="${{ steps.version.outputs.version }}" `
+          -p:InformationalVersion="${{ steps.version.outputs.version }}"
 
-    - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal
+    - name: Test (Unit Tests Only)
+      run: |
+        dotnet test tests/Everything.Interop.Tests/Everything.Interop.Tests.csproj --no-build --configuration Release --verbosity normal
+      # Note: Integration tests require Everything.exe running, so we skip them in CI
 
     - name: Publish MCP Server
       run: |
@@ -39,7 +74,11 @@ jobs:
           --self-contained true `
           --runtime win-x64 `
           -p:PublishSingleFile=true `
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:Version="${{ steps.version.outputs.version }}" `
+          -p:AssemblyVersion="${{ steps.version.outputs.version }}" `
+          -p:FileVersion="${{ steps.version.outputs.version }}" `
+          -p:InformationalVersion="${{ steps.version.outputs.version }}"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -48,10 +87,10 @@ jobs:
         path: ./publish/mcp-server/
 
     - name: Create package
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: steps.version.outputs.is_release == 'true'
       run: |
-        $version = "${{ github.ref_name }}"
-        $packageName = "everything-mcp-$version-win-x64"
+        $version = "${{ steps.version.outputs.version }}"
+        $packageName = "everything-mcp-v$version-win-x64"
 
         # Create package directory
         New-Item -ItemType Directory -Path "./packages/$packageName" -Force
@@ -81,10 +120,39 @@ jobs:
 
         ## Tools Available
 
-        - `search_files`: Search for files and folders
+        - `search_files`: General file/folder search with scope support
           - `query`: Search query (supports Everything syntax)
-          - `includeMetadata`: Include file metadata (optional, default: false)
-          - `maxResults`: Maximum number of results (optional, default: 100)
+          - `scope`: Search scope ('current', 'recursive', 'system', 'path:/custom/path')
+          - `include_metadata`: Include file metadata (optional, default: false)
+          - `max_results`: Maximum number of results (optional, default: 100)
+
+        - `search_in_project`: Search within a specific project directory
+          - `project_path`: Root directory of the project
+          - `pattern`: Search pattern (wildcards supported)
+          - `include_metadata`: Include file metadata (optional)
+          - `max_results`: Maximum number of results (optional)
+
+        - `find_executable`: Find executable files by name
+          - `name`: Name of the executable
+          - `exact_match`: Use exact matching (optional)
+          - `max_results`: Maximum number of results (optional)
+
+        - `find_source_files`: Find source code files by language
+          - `filename`: Base filename to search for
+          - `extensions`: Language extensions (e.g., 'cs,js,py')
+          - `include_metadata`: Include file metadata (optional)
+          - `max_results`: Maximum number of results (optional)
+
+        - `search_recent_files`: Find recently modified files
+          - `hours`: Hours to look back
+          - `pattern`: File pattern (optional)
+          - `include_metadata`: Include file metadata (optional)
+          - `max_results`: Maximum number of results (optional)
+
+        - `find_config_files`: Find configuration files
+          - `project_path`: Project directory (optional, null for global)
+          - `include_metadata`: Include file metadata (optional)
+          - `max_results`: Maximum number of results (optional)
 
         ## Example
 
@@ -97,7 +165,8 @@ jobs:
             "name": "search_files",
             "arguments": {
               "query": "*.txt",
-              "maxResults": 10
+              "scope": "recursive",
+              "max_results": 10
             }
           }
         }
@@ -108,12 +177,12 @@ jobs:
         Compress-Archive -Path "./packages/$packageName" -DestinationPath "./packages/$packageName.zip"
 
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: steps.version.outputs.is_release == 'true'
       uses: softprops/action-gh-release@v1
       with:
         files: ./packages/*.zip
         body: |
-          ## Everything MCP Server ${{ github.ref_name }}
+          ## Everything MCP Server v${{ steps.version.outputs.version }}
 
           A Model Context Protocol server that provides file search capabilities using Everything Search Engine.
 
@@ -129,7 +198,7 @@ jobs:
           - Everything Search Engine installed and running
 
           ### Installation
-          1. Download the `everything-mcp-${{ github.ref_name }}-win-x64.zip` file
+          1. Download the `everything-mcp-v${{ steps.version.outputs.version }}-win-x64.zip` file
           2. Extract to desired location
           3. Ensure Everything Search Engine is installed and running
           4. Run `everything-mcp.exe`
@@ -145,6 +214,9 @@ jobs:
             }
           }
           ```
+
+          ### What's New
+          See the [README](https://github.com/rweijnen/everything-mcp/blob/main/README.md) for complete feature documentation.
         draft: false
         prerelease: false
       env:

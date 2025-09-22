@@ -1,33 +1,29 @@
-using Everything.Client;
 using Everything.Interop;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace Everything.Integration.Tests;
 
-public class EverythingClientTests : IDisposable
+/// <summary>
+/// Integration tests for EverythingClient using a shared fixture
+/// to prevent multiple window registrations
+/// </summary>
+public class EverythingClientTests : IClassFixture<SharedClientFixture>
 {
-    private readonly EverythingClient _client;
+    private readonly SharedClientFixture _fixture;
     private readonly ITestOutputHelper _output;
 
-    public EverythingClientTests(ITestOutputHelper output)
+    public EverythingClientTests(SharedClientFixture fixture, ITestOutputHelper output)
     {
+        _fixture = fixture;
         _output = output;
-
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var logger = loggerFactory.CreateLogger<EverythingClient>();
-        var options = Options.Create(new EverythingClientOptions());
-
-        _client = new EverythingClient(options, logger);
     }
 
     [Fact]
     public void IsEverythingRunning_ShouldReturnTrue()
     {
         // Arrange & Act
-        var isRunning = _client.IsEverythingRunning;
+        var isRunning = _fixture.Client.IsEverythingRunning;
 
         // Assert
         Assert.True(isRunning, "Everything should be running for integration tests");
@@ -40,7 +36,7 @@ public class EverythingClientTests : IDisposable
         var query = "*.txt";
 
         // Act
-        var results = await _client.SearchBasicAsync(query);
+        var results = await _fixture.Client.SearchBasicAsync(query);
 
         // Assert
         Assert.NotEmpty(results);
@@ -65,7 +61,7 @@ public class EverythingClientTests : IDisposable
                           Query2RequestFlags.Size | Query2RequestFlags.DateModified;
 
         // Act
-        var results = await _client.SearchWithMetadataAsync(query, requestFlags);
+        var results = await _fixture.Client.SearchWithMetadataAsync(query, requestFlags);
 
         // Assert
         Assert.NotEmpty(results);
@@ -91,8 +87,8 @@ public class EverythingClientTests : IDisposable
         var query = "*.txt";
 
         // Act
-        var basicResults = await _client.SearchBasicAsync(query);
-        var metadataResults = await _client.SearchWithMetadataAsync(query,
+        var basicResults = await _fixture.Client.SearchBasicAsync(query);
+        var metadataResults = await _fixture.Client.SearchWithMetadataAsync(query,
             Query2RequestFlags.Name | Query2RequestFlags.Path);
 
         // Assert
@@ -117,7 +113,7 @@ public class EverythingClientTests : IDisposable
         var query = "*.exe";
 
         // Act
-        var results = await _client.SearchFilesAsync(query);
+        var results = await _fixture.Client.SearchFilesAsync(query);
 
         // Assert
         Assert.NotEmpty(results);
@@ -137,7 +133,7 @@ public class EverythingClientTests : IDisposable
         var query = "Windows";
 
         // Act
-        var results = await _client.SearchFoldersAsync(query);
+        var results = await _fixture.Client.SearchFoldersAsync(query);
 
         // Assert
         Assert.NotEmpty(results);
@@ -157,7 +153,7 @@ public class EverythingClientTests : IDisposable
         var extension = "txt";
 
         // Act
-        var results = await _client.SearchByExtensionAsync(extension);
+        var results = await _fixture.Client.SearchByExtensionAsync(extension);
 
         // Assert
         Assert.NotEmpty(results);
@@ -176,7 +172,7 @@ public class EverythingClientTests : IDisposable
     public async Task SearchAsync_WithFlags_ShouldRespectFlags(string query, SearchFlags flags)
     {
         // Act
-        var results = await _client.SearchAsync(query, flags);
+        var results = await _fixture.Client.SearchAsync(query, flags);
 
         // Assert
         Assert.NotNull(results);
@@ -189,8 +185,4 @@ public class EverythingClientTests : IDisposable
         _output.WriteLine($"Query '{query}' with flags {flags} returned {results.Length} results");
     }
 
-    public void Dispose()
-    {
-        _client?.Dispose();
-    }
 }

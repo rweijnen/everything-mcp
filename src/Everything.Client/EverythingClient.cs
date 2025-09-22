@@ -11,7 +11,7 @@ public class EverythingClient : IEverythingClient
     private readonly EverythingClientOptions _options;
     private readonly ILogger<EverythingClient> _logger;
     private readonly Timer? _refreshTimer;
-    private readonly Win32MessageWindow _messageWindow;
+    private readonly MessageWindowThread _messageWindowThread;
     private bool _disposed = false;
 
     public EverythingClient(IOptions<EverythingClientOptions> options, ILogger<EverythingClient> logger)
@@ -19,7 +19,8 @@ public class EverythingClient : IEverythingClient
         _options = options.Value;
         _logger = logger;
         _ipc = new EverythingIpc();
-        _messageWindow = new Win32MessageWindow();
+        _logger.LogInformation("Creating dedicated message window thread for Everything IPC");
+        _messageWindowThread = new MessageWindowThread(_logger);
 
         if (_options.EnableAutoRefresh)
         {
@@ -181,7 +182,8 @@ public class EverythingClient : IEverythingClient
 
         try
         {
-            var results = await _messageWindow.QueryAsync(options, _options.DefaultTimeoutMs, cancellationToken);
+            _logger.LogDebug("Delegating search to dedicated message window thread");
+            var results = await _messageWindowThread.QueryAsync(options, _options.DefaultTimeoutMs, cancellationToken);
             _logger.LogDebug("Search completed with {Count} results", results.Length);
             return results;
         }
@@ -308,7 +310,8 @@ public class EverythingClient : IEverythingClient
             if (disposing)
             {
                 _refreshTimer?.Dispose();
-                _messageWindow?.Dispose();
+                _logger.LogInformation("Disposing Everything client and message window thread");
+        _messageWindowThread?.Dispose();
                 _ipc?.Dispose();
                 _logger.LogInformation("Everything client disposed");
             }

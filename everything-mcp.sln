@@ -6,8 +6,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Everything.Interop", "src\E
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Everything.Client", "src\Everything.Client\Everything.Client.csproj", "{1D10F135-7BF2-4F20-990F-80F1D617BDE2}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Everything.Mcp.Server", "src\Everything.Mcp.Server\Everything.Mcp.Server.csproj", "{947657A8-F524-4B14-8911-A165AF888B34}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Everything.TestConsole", "src\Everything.TestConsole\Everything.TestConsole.csproj", "{E7D01B96-F521-451F-A3E6-8432688C622D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Everything.Mcp", "src\Everything.Mcp\Everything.Mcp.csproj", "{B8C9D0E1-F2A3-4B5C-6D7E-8F90A1B2C3D4}"
@@ -32,10 +30,6 @@ Global
 		{1D10F135-7BF2-4F20-990F-80F1D617BDE2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1D10F135-7BF2-4F20-990F-80F1D617BDE2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1D10F135-7BF2-4F20-990F-80F1D617BDE2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{947657A8-F524-4B14-8911-A165AF888B34}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{947657A8-F524-4B14-8911-A165AF888B34}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{947657A8-F524-4B14-8911-A165AF888B34}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{947657A8-F524-4B14-8911-A165AF888B34}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E7D01B96-F521-451F-A3E6-8432688C622D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E7D01B96-F521-451F-A3E6-8432688C622D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E7D01B96-F521-451F-A3E6-8432688C622D}.Release|Any CPU.ActiveCfg = Release|Any CPU

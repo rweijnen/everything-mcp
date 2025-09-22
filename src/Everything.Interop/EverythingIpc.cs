@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace Everything.Interop;
 
@@ -10,9 +11,11 @@ public class EverythingIpc : IDisposable
 
     private IntPtr _everythingWindow = IntPtr.Zero;
     private bool _disposed = false;
+    private readonly ILogger? _logger;
 
-    public EverythingIpc()
+    public EverythingIpc(ILogger? logger = null)
     {
+        _logger = logger;
         RefreshEverythingWindow();
     }
 
@@ -161,11 +164,17 @@ public class EverythingIpc : IDisposable
             {
                 Marshal.StructureToPtr(copyData, copyDataPtr, false);
 
+                _logger?.LogDebug("Sending WM_COPYDATA message to Everything window {WindowHandle} for query: {Query}",
+                    _everythingWindow, options.Query);
+
                 var result = NativeMethods.SendMessage(_everythingWindow, Constants.WM_COPYDATA,
                     replyHwnd, copyDataPtr);
 
+                _logger?.LogDebug("SendMessage returned: {Result} for query: {Query}", result, options.Query);
+
                 if (result == IntPtr.Zero)
                 {
+                    _logger?.LogError("SendMessage failed (returned 0) for query: {Query}", options.Query);
                     throw EverythingIpcException.SendMessageFailed("QueryW");
                 }
             }
@@ -528,11 +537,24 @@ public class EverythingIpc : IDisposable
 
     private void EnsureEverythingRunning()
     {
+        _logger?.LogDebug("Checking if Everything is running...");
+
         if (!IsEverythingRunning)
         {
+            _logger?.LogDebug("Everything not found, refreshing window handle...");
             RefreshEverythingWindow();
+
             if (!IsEverythingRunning)
+            {
+                _logger?.LogError("Everything.exe is not running or not responding. Window handle: {WindowHandle}", _everythingWindow);
                 throw EverythingIpcException.EverythingNotRunning();
+            }
+
+            _logger?.LogDebug("Everything found after refresh. Window handle: {WindowHandle}", _everythingWindow);
+        }
+        else
+        {
+            _logger?.LogDebug("Everything is running. Window handle: {WindowHandle}", _everythingWindow);
         }
     }
 

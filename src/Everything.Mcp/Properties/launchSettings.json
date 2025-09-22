@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Everything.Mcp": {
+      "commandName": "Project",
+      "commandLineArgs": "--http"
+    }
+  }
+}

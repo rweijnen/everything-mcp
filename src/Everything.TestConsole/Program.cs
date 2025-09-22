@@ -33,6 +33,12 @@ internal class Program
         {
             return await DebugQuery2Program.RunDebugAsync(args.Skip(1).ToArray());
         }
+
+        // Check for benchmark mode
+        if (args.Length > 0 && args[0] == "--benchmark")
+        {
+            return await BenchmarkProgram.RunBenchmarkAsync(args.Skip(1).ToArray());
+        }
         try
         {
             var host = CreateHostBuilder(args).Build();

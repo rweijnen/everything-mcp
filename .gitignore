@@ -407,3 +407,17 @@ sdk/
 
 # Legacy test files
 legacy-tests/
+
+# Test scripts and debugging files
+test_*.ps1
+debug_*.ps1
+simple_*.ps1
+quick_*.ps1
+*.pdf
+token_analysis.py
+compare_search.md
+nul
+src/Everything.TestConsole/BenchmarkProgram.cs
+
+# Temporary/corrupted path files
+"C:*"
