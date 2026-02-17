@@ -490,11 +490,11 @@ public class EverythingIpc : IDisposable
             var fullPathLength = *(uint*)(dataPtr + offset);
             offset += sizeof(uint);
 
-            if (fullPathLength > 0 && fullPathLength < 32768 && offset + fullPathLength * sizeof(char) <= remainingSize)
+            if (fullPathLength > 0 && fullPathLength < 32768 && offset + (fullPathLength + 1) * sizeof(char) <= remainingSize)
             {
                 fullPath = new string((char*)(dataPtr + offset), 0, (int)fullPathLength);
             }
-            offset += (int)fullPathLength * sizeof(char);
+            offset += (int)(fullPathLength + 1) * sizeof(char);
         }
 
         if ((requestFlags & (uint)Query2RequestFlags.Extension) != 0)
@@ -502,11 +502,8 @@ public class EverythingIpc : IDisposable
             if (offset + sizeof(uint) > remainingSize) return CreateEmptyResult(flags);
             var extLength = *(uint*)(dataPtr + offset);
             offset += sizeof(uint);
-            // Skip extension for now
-            if (offset + extLength * sizeof(char) <= remainingSize)
-            {
-                offset += (int)extLength * sizeof(char);
-            }
+            // Skip extension data (length-prefixed string with null terminator)
+            offset += (int)(extLength + 1) * sizeof(char);
         }
 
         if ((requestFlags & (uint)Query2RequestFlags.Size) != 0)
@@ -547,6 +544,15 @@ public class EverythingIpc : IDisposable
             offset += sizeof(uint);
         }
 
+        if ((requestFlags & (uint)Query2RequestFlags.FileListFileName) != 0)
+        {
+            if (offset + sizeof(uint) > remainingSize) return CreateEmptyResult(flags);
+            var fileListNameLength = *(uint*)(dataPtr + offset);
+            offset += sizeof(uint);
+            // Skip file list filename data (length-prefixed string with null terminator)
+            offset += (int)(fileListNameLength + 1) * sizeof(char);
+        }
+
         if ((requestFlags & (uint)Query2RequestFlags.RunCount) != 0)
         {
             if (offset + sizeof(uint) > remainingSize) return CreateEmptyResult(flags);
@@ -559,6 +565,13 @@ public class EverythingIpc : IDisposable
             if (offset + sizeof(long) > remainingSize) return CreateEmptyResult(flags);
             var fileTime = *(long*)(dataPtr + offset);
             dateRun = TryParseFileTime(fileTime);
+            offset += sizeof(long);
+        }
+
+        if ((requestFlags & (uint)Query2RequestFlags.DateRecentlyChanged) != 0)
+        {
+            if (offset + sizeof(long) > remainingSize) return CreateEmptyResult(flags);
+            // Skip date recently changed (FILETIME)
             offset += sizeof(long);
         }
 
