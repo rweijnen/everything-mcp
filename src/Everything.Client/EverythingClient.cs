@@ -237,12 +237,21 @@ public class EverythingClient : IEverythingClient
     {
         _logger.LogDebug("Searching for: {Query} with flags: {Flags}", options.Query, options.Flags);
 
+        // Create timeout cancellation token and combine with user cancellation token
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_options.DefaultTimeoutMs));
+        using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
         try
         {
             _logger.LogDebug("Delegating search to dedicated message window thread");
-            var results = await _messageWindowThread.QueryAsync(options, _options.DefaultTimeoutMs, cancellationToken);
+            var results = await _messageWindowThread.QueryAsync(options, combinedCts.Token);
             _logger.LogDebug("Search completed with {Count} results", results.Length);
             return results;
+        }
+        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
+        {
+            _logger.LogWarning("Search timed out after {TimeoutMs}ms for query: {Query}", _options.DefaultTimeoutMs, options.Query);
+            throw new TimeoutException($"Search operation timed out after {_options.DefaultTimeoutMs}ms");
         }
         catch (Exception ex)
         {

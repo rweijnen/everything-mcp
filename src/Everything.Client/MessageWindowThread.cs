@@ -10,6 +10,20 @@ namespace Everything.Client;
 /// </summary>
 internal class MessageWindowThread : IDisposable
 {
+    // Use centralized P/Invoke declarations from Everything.Interop
+    private static uint MsgWaitForMultipleObjects(uint nCount, IntPtr[] pHandles, bool bWaitAll, uint dwMilliseconds, uint dwWakeMask) =>
+        NativeMethods.MsgWaitForMultipleObjects(nCount, pHandles, bWaitAll, dwMilliseconds, dwWakeMask);
+
+    private static bool PeekMessage(out Msg lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg) =>
+        NativeMethods.PeekMessage(out lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+
+    private static bool TranslateMessage(ref Msg lpMsg) => NativeMethods.TranslateMessage(ref lpMsg);
+    private static IntPtr DispatchMessage(ref Msg lpMsg) => NativeMethods.DispatchMessage(ref lpMsg);
+
+    private const uint QS_ALLINPUT = NativeMethods.QS_ALLINPUT;
+    private const uint WAIT_OBJECT_0 = NativeMethods.WAIT_OBJECT_0;
+    private const uint WAIT_FAILED = NativeMethods.WAIT_FAILED;
+
     private readonly ILogger _logger;
     private readonly Thread _windowThread;
     private readonly ManualResetEventSlim _threadReady = new();
@@ -26,7 +40,6 @@ internal class MessageWindowThread : IDisposable
     {
         public required SearchOptions Options { get; init; }
         public required TaskCompletionSource<SearchResult[]> TaskCompletionSource { get; init; }
-        public required int TimeoutMs { get; init; }
         public required CancellationToken CancellationToken { get; init; }
     }
 
@@ -51,7 +64,7 @@ internal class MessageWindowThread : IDisposable
         _logger.LogDebug("MessageWindowThread initialized with window handle: {WindowHandle}", _hwnd);
     }
 
-    public Task<SearchResult[]> QueryAsync(SearchOptions options, int timeoutMs, CancellationToken cancellationToken)
+    public Task<SearchResult[]> QueryAsync(SearchOptions options, CancellationToken cancellationToken)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(MessageWindowThread));
@@ -62,7 +75,6 @@ internal class MessageWindowThread : IDisposable
         {
             Options = options,
             TaskCompletionSource = tcs,
-            TimeoutMs = timeoutMs,
             CancellationToken = cancellationToken
         };
 
@@ -178,30 +190,54 @@ internal class MessageWindowThread : IDisposable
     {
         _logger.LogDebug("Starting message pump on dedicated thread");
 
+        // Use proper Win32 event-driven approach
+        var cancelHandle = _cancellationTokenSource.Token.WaitHandle;
+        var queryHandle = _queryAvailable.WaitHandle;
+        var handles = new[] {
+            cancelHandle.SafeWaitHandle.DangerousGetHandle(),
+            queryHandle.SafeWaitHandle.DangerousGetHandle()
+        };
+
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
             // Process any queued work first
             ProcessQueuedRequests();
 
-            // Check for Windows messages without blocking
-            if (PeekMessage(out var msg, _hwnd, 0, 0, 1)) // PM_REMOVE = 1
+            // Wait for cancellation, queries, OR messages (no polling!)
+            var waitResult = MsgWaitForMultipleObjects(2, handles, false, unchecked((uint)-1), QS_ALLINPUT);
+
+            if (waitResult == WAIT_FAILED)
+            {
+                _logger.LogError("MsgWaitForMultipleObjects failed: {Error}", Marshal.GetLastWin32Error());
+                break;
+            }
+
+            // Check for cancellation (WAIT_OBJECT_0 = first handle)
+            if (waitResult == WAIT_OBJECT_0)
+            {
+                _logger.LogDebug("Cancellation signaled, exiting message pump");
+                break;
+            }
+
+            // Check for new queries (WAIT_OBJECT_0 + 1 = second handle)
+            if (waitResult == WAIT_OBJECT_0 + 1)
+            {
+                _queryAvailable.Reset();
+                // Will process queries in next loop iteration
+                continue;
+            }
+
+            // Process all pending messages (waitResult == WAIT_OBJECT_0 + 2 means messages available)
+            while (PeekMessage(out var msg, _hwnd, 0, 0, 1)) // PM_REMOVE = 1
             {
                 if (msg.message == WM_QUIT)
                 {
                     _logger.LogDebug("Received WM_QUIT, exiting message pump");
-                    break;
+                    return;
                 }
 
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
-            }
-            else
-            {
-                // No messages, wait for queries or cancellation
-                if (_queryAvailable.Wait(100, _cancellationTokenSource.Token))
-                {
-                    _queryAvailable.Reset();
-                }
             }
         }
 
@@ -359,80 +395,24 @@ internal class MessageWindowThread : IDisposable
 
     #region P/Invoke Declarations
 
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct WndClassEx
-    {
-        public uint cbSize;
-        public uint style;
-        public WndProcDelegate lpfnWndProc;
-        public int cbClsExtra;
-        public int cbWndExtra;
-        public IntPtr hInstance;
-        public IntPtr hIcon;
-        public IntPtr hCursor;
-        public IntPtr hbrBackground;
-        [MarshalAs(UnmanagedType.LPWStr)]
-        public string? lpszMenuName;
-        [MarshalAs(UnmanagedType.LPWStr)]
-        public string lpszClassName;
-        public IntPtr hIconSm;
-    }
-
     private const uint WM_COPYDATA = 0x004A;
     private const uint WM_USER = 0x0400;
     private const uint WM_QUIT = 0x0012;
-    private const uint MSGFLT_ADD = 1;
-    private static readonly IntPtr HWND_MESSAGE = new IntPtr(-3);
+    // Use centralized constants and P/Invoke declarations from Everything.Interop
+    private const uint MSGFLT_ADD = NativeMethods.MSGFLT_ADD;
+    private static readonly IntPtr HWND_MESSAGE = new IntPtr(NativeMethods.HWND_MESSAGE);
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern ushort RegisterClassEx(ref WndClassEx lpwcx);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr CreateWindowEx(uint dwExStyle, string lpClassName, string lpWindowName,
+    private static ushort RegisterClassEx(ref WndClassEx lpwcx) => NativeMethods.RegisterClassEx(ref lpwcx);
+    private static IntPtr CreateWindowEx(uint dwExStyle, string lpClassName, string lpWindowName,
         uint dwStyle, int x, int y, int nWidth, int nHeight, IntPtr hWndParent, IntPtr hMenu,
-        IntPtr hInstance, IntPtr lpParam);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool DestroyWindow(IntPtr hWnd);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr GetModuleHandle(string? lpModuleName);
-
-    [DllImport("user32.dll")]
-    private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
-
-    [DllImport("user32.dll")]
-    private static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
-
-    [DllImport("user32.dll")]
-    private static extern bool TranslateMessage(ref MSG lpMsg);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr DispatchMessage(ref MSG lpMsg);
-
-    [DllImport("user32.dll")]
-    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool ChangeWindowMessageFilter(uint message, uint dwFlag);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MSG
-    {
-        public IntPtr hwnd;
-        public uint message;
-        public IntPtr wParam;
-        public IntPtr lParam;
-        public uint time;
-        public int x;
-        public int y;
-    }
+        IntPtr hInstance, IntPtr lpParam) =>
+        NativeMethods.CreateWindowEx(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+    private static IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam) => NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam);
+    private static bool DestroyWindow(IntPtr hWnd) => NativeMethods.DestroyWindow(hWnd);
+    private static IntPtr GetModuleHandle(string? lpModuleName) => NativeMethods.GetModuleHandle(lpModuleName);
+    private static int GetMessage(out Msg lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax) => NativeMethods.GetMessage(out lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
+    private static bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam) => NativeMethods.PostMessage(hWnd, msg, wParam, lParam);
+    private static bool ChangeWindowMessageFilter(uint message, uint dwFlag) => NativeMethods.ChangeWindowMessageFilter(message, dwFlag);
 
     #endregion
 }

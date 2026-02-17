@@ -279,3 +279,49 @@ public readonly record struct SearchOptions(
         _ => false
     };
 };
+
+/// <summary>
+/// Windows MSG structure for message pump operations.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct Msg
+{
+    public IntPtr hwnd;
+    public uint message;
+    public IntPtr wParam;
+    public IntPtr lParam;
+    public uint time;
+    public Point pt;
+}
+
+/// <summary>
+/// Windows POINT structure.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct Point
+{
+    public int x;
+    public int y;
+}
+
+/// <summary>
+/// Windows WNDCLASSEX structure for window class registration.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+public struct WndClassEx
+{
+    public uint cbSize;
+    public uint style;
+    public WndProcDelegate lpfnWndProc;
+    public int cbClsExtra;
+    public int cbWndExtra;
+    public IntPtr hInstance;
+    public IntPtr hIcon;
+    public IntPtr hCursor;
+    public IntPtr hbrBackground;
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string? lpszMenuName;
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string lpszClassName;
+    public IntPtr hIconSm;
+}
