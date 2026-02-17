@@ -70,10 +70,10 @@ internal class EverythingMcpTools
     /// - "!temp" - Exclude files/folders with 'temp' in name
     /// </remarks>
     [McpServerTool]
-    [Description("Search for files and folders using Everything search. Supports wildcards, regex, boolean operators (AND/OR/NOT), size filters, and more.")]
+    [Description("Instantly search for files and folders by name using an indexed database. Preferred over `where`, `find`, `dir /s`, or `ls -R` for recursive or system-wide searches. Supports wildcards, regex, boolean operators, size and date filters.")]
     public async Task<object> search_files(
         [Description("Search query with Everything syntax: wildcards (*.cs), regex (regex:pattern), boolean (!exclude, file1|file2), size (size:>1MB), etc.")] string query,
-        [Description("Search scope: 'current' (default), 'recursive', 'path:/some/folder', or 'system' for system-wide")] string scope = "current",
+        [Description("Search scope: 'current' (default), 'recursive', 'path:C:\\\\folder', or 'system' for system-wide")] string scope = "current",
         [Description("Include metadata like size, dates (default: false)")] bool include_metadata = false,
         [Description("Maximum number of results (default: 100)")] int max_results = 100)
     {
@@ -87,40 +87,19 @@ internal class EverythingMcpTools
                 ? await _everythingClient.SearchWithMetadataAsync(scopedQuery)
                 : await _everythingClient.SearchBasicAsync(scopedQuery);
 
-            var limitedResults = results.Take(max_results).ToList();
-
-            return new
-            {
-                query = query,
-                scope = scope,
-                scoped_query = scopedQuery,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
-                {
-                    name = r.Name,
-                    path = r.Path,
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
-                }).ToList()
-            };
+            var limited = results.Take(max_results).ToList();
+            var mapped = limited.Select(r => BuildResultObject(r, include_metadata)).ToList();
+            return BuildResponse(results.Length, limited, mapped);
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while searching files with query: {Query}", query);
-            return new
+            return new Dictionary<string, object>
             {
-                query = query,
-                scope = scope,
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ["total_found"] = 0,
+                ["returned"] = 0,
+                ["error"] = "Service is shutting down, please try again",
+                ["results"] = new List<object>()
             };
         }
         catch (Exception ex)
@@ -131,7 +110,7 @@ internal class EverythingMcpTools
     }
 
     [McpServerTool]
-    [Description("Search for files in a specific project folder recursively.")]
+    [Description("Instantly search for files by name within a project folder tree. Use instead of `find` or `Get-ChildItem -Recurse` for name-based file discovery.")]
     public async Task<object> search_in_project(
         [Description("Project folder path")] string project_path,
         [Description("Search pattern (e.g., *.cs, test*.txt)")] string pattern,
@@ -140,49 +119,26 @@ internal class EverythingMcpTools
     {
         try
         {
-            var normalizedPath = Path.GetFullPath(project_path).TrimEnd('\\', '/');
-            var query = $"{normalizedPath}\\{pattern}";
+            var normalizedPath = Path.GetFullPath(NormalizeToWindowsPath(project_path)).TrimEnd('\\', '/');
+            var query = $"path:\"{normalizedPath}\" {pattern}";
 
             var results = include_metadata
                 ? await _everythingClient.SearchWithMetadataAsync(query)
                 : await _everythingClient.SearchBasicAsync(query);
 
-            var limitedResults = results.Take(max_results).ToList();
-
-            return new
-            {
-                project_path = project_path,
-                pattern = pattern,
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
-                {
-                    name = r.Name,
-                    path = r.Path,
-                    relative_path = Path.GetRelativePath(normalizedPath, r.Path),
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
-                }).ToList()
-            };
+            var limited = results.Take(max_results).ToList();
+            var mapped = limited.Select(r => BuildResultObject(r, include_metadata, normalizedPath)).ToList();
+            return BuildResponse(results.Length, limited, mapped);
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while searching in project {ProjectPath} with pattern: {Pattern}", project_path, pattern);
-            return new
+            return new Dictionary<string, object>
             {
-                project_path = project_path,
-                pattern = pattern,
-                query = $"{project_path}\\{pattern}",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ["total_found"] = 0,
+                ["returned"] = 0,
+                ["error"] = "Service is shutting down, please try again",
+                ["results"] = new List<object>()
             };
         }
         catch (Exception ex)
@@ -211,7 +167,7 @@ internal class EverythingMcpTools
     /// Useful for quickly locating programs, scripts, and system utilities.
     /// </remarks>
     [McpServerTool]
-    [Description("Find executable files (.exe, .bat, .cmd, .ps1) by name.")]
+    [Description("Instantly locate executables (.exe, .bat, .cmd, .ps1) system-wide. Use instead of `where`, `which`, or `Get-Command`.")]
     public async Task<object> find_executable(
         [Description("Executable name. Use 'notepad' for variations, 'notepad.exe' for exact match, 'note*' for wildcards")] string name,
         [Description("Force exact match (true) or auto-detect from input (false, default)")] bool exact_match = false,
@@ -249,36 +205,21 @@ internal class EverythingMcpTools
             var results = await _everythingClient.SearchBasicAsync(query);
             _logger.LogDebug("Search returned {Count} results", results.Length);
 
-            var limitedResults = results.Take(max_results).ToList();
-            _logger.LogDebug("Limited to {Count} results", limitedResults.Count);
+            var limited = results.Take(max_results).ToList();
+            _logger.LogDebug("Limited to {Count} results", limited.Count);
 
-            return new
-            {
-                search_name = name,
-                exact_match = shouldBeExact, // Show computed value, not input parameter
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                results = limitedResults.Select(r => new
-                {
-                    name = r.Name,
-                    path = r.Path,
-                    is_folder = r.IsFolder
-                }).ToList()
-            };
+            var mapped = limited.Select(r => BuildResultObject(r, false)).ToList();
+            return BuildResponse(results.Length, limited, mapped);
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while finding executable: {Name}", name);
-            return new
+            return new Dictionary<string, object>
             {
-                search_name = name,
-                exact_match = exact_match,
-                query = "",
-                total_found = 0,
-                returned = 0,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ["total_found"] = 0,
+                ["returned"] = 0,
+                ["error"] = "Service is shutting down, please try again",
+                ["results"] = new List<object>()
             };
         }
         catch (Exception ex)
@@ -289,7 +230,7 @@ internal class EverythingMcpTools
     }
 
     [McpServerTool]
-    [Description("Find source code files with common programming extensions.")]
+    [Description("Instantly find source code files by name across common programming languages. Use instead of shell glob searches like `find -name '*.cs'`.")]
     public async Task<object> find_source_files(
         [Description("Base filename to search for")] string filename,
         [Description("Additional file extensions (comma-separated, optional)")] string? extensions = null,
@@ -309,42 +250,19 @@ internal class EverythingMcpTools
                 ? await _everythingClient.SearchWithMetadataAsync(query)
                 : await _everythingClient.SearchBasicAsync(query);
 
-            var limitedResults = results.Take(max_results).ToList();
-
-            return new
-            {
-                filename = filename,
-                extensions_searched = allExtensions,
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
-                {
-                    name = r.Name,
-                    path = r.Path,
-                    extension = Path.GetExtension(r.Name),
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
-                }).ToList()
-            };
+            var limited = results.Take(max_results).ToList();
+            var mapped = limited.Select(r => BuildResultObject(r, include_metadata)).ToList();
+            return BuildResponse(results.Length, limited, mapped);
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while finding source files: {Filename}", filename);
-            return new
+            return new Dictionary<string, object>
             {
-                filename = filename,
-                extensions_searched = new string[0],
-                query = "",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ["total_found"] = 0,
+                ["returned"] = 0,
+                ["error"] = "Service is shutting down, please try again",
+                ["results"] = new List<object>()
             };
         }
         catch (Exception ex)
@@ -355,7 +273,7 @@ internal class EverythingMcpTools
     }
 
     [McpServerTool]
-    [Description("Search for recently modified files within a time period.")]
+    [Description("Find recently modified files within a time window. Use instead of `find -mtime` or sorting directory listings by date.")]
     public async Task<object> search_recent_files(
         [Description("Time period in hours (default: 24)")] int hours = 24,
         [Description("File pattern to filter by (optional, e.g., *.cs)")] string? pattern = null,
@@ -379,42 +297,20 @@ internal class EverythingMcpTools
                 .Take(max_results)
                 .ToList();
 
-            return new
-            {
-                hours_back = hours,
-                cutoff_date = cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"),
-                pattern = pattern,
-                query = query,
-                total_found = results.Length,
-                returned = sortedResults.Count,
-                include_metadata = include_metadata,
-                results = sortedResults.Select(r => new
-                {
-                    name = r.Name,
-                    path = r.Path,
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    hours_ago = r.DateModified.HasValue ? (double?)(DateTime.Now - r.DateModified.Value).TotalHours : null
-                }).ToList()
-            };
+            var mapped = sortedResults.Select(r => BuildRecentResultObject(r, include_metadata)).ToList();
+            var response = BuildResponse(results.Length, sortedResults, mapped);
+            response["hours_back"] = hours;
+            return response;
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while searching recent files");
-            return new
+            return new Dictionary<string, object>
             {
-                hours_back = hours,
-                cutoff_date = DateTime.Now.AddHours(-hours).ToString("yyyy-MM-dd HH:mm:ss"),
-                pattern = pattern,
-                query = "",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ["total_found"] = 0,
+                ["returned"] = 0,
+                ["error"] = "Service is shutting down, please try again",
+                ["results"] = new List<object>()
             };
         }
         catch (Exception ex)
@@ -425,7 +321,7 @@ internal class EverythingMcpTools
     }
 
     [McpServerTool]
-    [Description("Find configuration files (json, xml, yaml, ini, config) in a project.")]
+    [Description("Find configuration files (json, xml, yaml, ini, toml, config) in a project or system-wide.")]
     public async Task<object> find_config_files(
         [Description("Project folder path (optional, searches everywhere if not specified)")] string? project_path = null,
         [Description("Include metadata like size, dates (default: false)")] bool include_metadata = false,
@@ -444,9 +340,9 @@ internal class EverythingMcpTools
             string query;
             if (!string.IsNullOrEmpty(project_path))
             {
-                var normalizedPath = Path.GetFullPath(project_path).TrimEnd('\\', '/');
-                var pathQueries = allQueries.Select(q => $"{normalizedPath}\\{q}");
-                query = string.Join("|", pathQueries);
+                var normalizedPath = Path.GetFullPath(NormalizeToWindowsPath(project_path)).TrimEnd('\\', '/');
+                var patternQuery = string.Join("|", allQueries);
+                query = $"path:\"{normalizedPath}\" {patternQuery}";
             }
             else
             {
@@ -457,45 +353,20 @@ internal class EverythingMcpTools
                 ? await _everythingClient.SearchWithMetadataAsync(query)
                 : await _everythingClient.SearchBasicAsync(query);
 
-            var limitedResults = results.Take(max_results).ToList();
-
-            return new
-            {
-                project_path = project_path,
-                config_extensions = configExtensions,
-                config_names = configNames,
-                query = query,
-                total_found = results.Length,
-                returned = limitedResults.Count,
-                include_metadata = include_metadata,
-                results = limitedResults.Select(r => new
-                {
-                    name = r.Name,
-                    path = r.Path,
-                    relative_path = !string.IsNullOrEmpty(project_path) ? Path.GetRelativePath(project_path, r.Path) : null,
-                    type = Path.GetExtension(r.Name).ToLowerInvariant(),
-                    is_folder = r.IsFolder,
-                    size = include_metadata ? r.Size : null,
-                    date_modified = include_metadata ? r.DateModified?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_created = include_metadata ? r.DateCreated?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null,
-                    date_accessed = include_metadata ? r.DateAccessed?.ToString("yyyy-MM-dd HH:mm:ss") : (string?)null
-                }).ToList()
-            };
+            var limited = results.Take(max_results).ToList();
+            var relativeTo = !string.IsNullOrEmpty(project_path) ? project_path : null;
+            var mapped = limited.Select(r => BuildResultObject(r, include_metadata, relativeTo)).ToList();
+            return BuildResponse(results.Length, limited, mapped);
         }
         catch (ObjectDisposedException ex)
         {
             _logger.LogError(ex, "Everything client disposed while finding config files in: {ProjectPath}", project_path);
-            return new
+            return new Dictionary<string, object>
             {
-                project_path = project_path,
-                config_extensions = new string[0],
-                config_names = new string[0],
-                query = "",
-                total_found = 0,
-                returned = 0,
-                include_metadata = include_metadata,
-                error = "Service is shutting down, please try again",
-                results = new List<object>()
+                ["total_found"] = 0,
+                ["returned"] = 0,
+                ["error"] = "Service is shutting down, please try again",
+                ["results"] = new List<object>()
             };
         }
         catch (Exception ex)
@@ -503,6 +374,82 @@ internal class EverythingMcpTools
             _logger.LogError(ex, "Error finding config files in: {ProjectPath}", project_path);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Builds a lean result object for a single search result, omitting null metadata fields.
+    /// </summary>
+    private static object BuildResultObject(Everything.Interop.SearchResult r, bool includeMetadata, string? relativeTo = null)
+    {
+        var dict = new Dictionary<string, object?>
+        {
+            ["name"] = r.Name,
+            ["path"] = r.Path
+        };
+
+        if (relativeTo != null)
+            dict["relative_path"] = Path.GetRelativePath(relativeTo, r.Path);
+
+        if (includeMetadata)
+        {
+            if (r.Size.HasValue)
+                dict["size"] = r.Size.Value;
+            if (r.DateModified.HasValue)
+                dict["date_modified"] = r.DateModified.Value.ToString("yyyy-MM-dd HH:mm:ss");
+            if (r.DateCreated.HasValue)
+                dict["date_created"] = r.DateCreated.Value.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        return dict;
+    }
+
+    /// <summary>
+    /// Builds a lean result object for recent files, including hours_ago.
+    /// </summary>
+    private static object BuildRecentResultObject(Everything.Interop.SearchResult r, bool includeMetadata)
+    {
+        var dict = new Dictionary<string, object?>
+        {
+            ["name"] = r.Name,
+            ["path"] = r.Path
+        };
+
+        if (includeMetadata)
+        {
+            if (r.Size.HasValue)
+                dict["size"] = r.Size.Value;
+            if (r.DateModified.HasValue)
+            {
+                dict["date_modified"] = r.DateModified.Value.ToString("yyyy-MM-dd HH:mm:ss");
+                dict["hours_ago"] = Math.Round((DateTime.Now - r.DateModified.Value).TotalHours, 1);
+            }
+            if (r.DateCreated.HasValue)
+                dict["date_created"] = r.DateCreated.Value.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        return dict;
+    }
+
+    /// <summary>
+    /// Builds the top-level response dictionary with optional folder count.
+    /// </summary>
+    private static Dictionary<string, object> BuildResponse(
+        int totalFound,
+        IReadOnlyList<Everything.Interop.SearchResult> returnedResults,
+        IReadOnlyList<object> mappedResults)
+    {
+        var response = new Dictionary<string, object>
+        {
+            ["total_found"] = totalFound,
+            ["returned"] = mappedResults.Count
+        };
+
+        var folderCount = returnedResults.Count(r => r.IsFolder);
+        if (folderCount > 0)
+            response["folders"] = folderCount;
+
+        response["results"] = mappedResults;
+        return response;
     }
 
     private string BuildScopedQuery(string query, string scope)
@@ -522,8 +469,31 @@ internal class EverythingMcpTools
     private string BuildCustomPathQuery(string custom, string query)
     {
         var pathPart = custom.Substring(5).Trim(); // Remove "path:" prefix and trim whitespace
-        // Remove only leading slashes
-        pathPart = pathPart.TrimStart('/', '\\');
+        pathPart = NormalizeToWindowsPath(pathPart);
         return $"path:\"{pathPart}\" {query}";
+    }
+
+    /// <summary>
+    /// Converts Unix-style paths (e.g. /c/Users/me or c:/foo) to Windows paths (C:\Users\me).
+    /// LLMs running in Git Bash/MSYS2 often produce Unix paths that Everything cannot match.
+    /// </summary>
+    private static string NormalizeToWindowsPath(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return path;
+
+        path = path.Trim().TrimStart('/', '\\');
+
+        // Convert /c/Users/... or c/Users/... (after trim) to C:\Users\...
+        // Match a single drive letter followed by / at position 0
+        if (path.Length >= 2 && char.IsLetter(path[0]) && path[1] == '/')
+        {
+            path = char.ToUpper(path[0]) + ":" + path.Substring(1);
+        }
+
+        // Replace remaining forward slashes with backslashes
+        path = path.Replace('/', '\\');
+
+        return path;
     }
 }
